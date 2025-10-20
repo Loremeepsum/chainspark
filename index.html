@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChainSpark - Co-create Ideas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Aleo:wght@300;400;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Lato', sans-serif;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Aleo', serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+    <div id="app"></div>
+
+    <script>
+        // ===================================
+        // FIREBASE CONFIGURATION
+        
+        const firebaseConfig = {
+    apiKey: "AIzaSyAGo4RbGJnL5oB3kUVTDWVtnhMURs_KLT4",
+    authDomain: "chainspark-e95ed.firebaseapp.com",
+    projectId: "chainspark-e95ed",
+    storageBucket: "chainspark-e95ed.firebasestorage.app",
+    messagingSenderId: "404202716131",
+    appId: "1:404202716131:web:6807c2e74f97ea203bfed6"
+};
+
+        // Initialize Firebase (or fallback to localStorage when not configured)
+        const useFirebase = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('YOUR'));
+        let db = null;
+        let auth = null;
+
+        if (useFirebase) {
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+        } else {
+            console.warn('Firebase config not set — running in local-only mode using localStorage. Replace firebaseConfig with your project config to enable Firebase.');
+        }
+
+        // Local storage helpers for fallback mode
+        function _readLocal(key) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function _writeLocal(key, value) {
+            localStorage.setItem(key, JSON.stringify(value));
+        }
+
+        // ===================================
+        // FIREBASE FUNCTIONS
+        // ===================================
+        
+        // Load all data (Firebase or localStorage fallback)
+        async function loadDataFromFirebase() {
+            try {
+                if (useFirebase && db) {
+                    // Load ideas
+                    const ideasSnapshot = await db.collection('ideas').orderBy('timestamp', 'desc').get();
+                    state.ideas = ideasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // Load incomplete chains
+                    const chainsSnapshot = await db.collection('incompleteChains').orderBy('timestamp', 'desc').get();
+                    state.incompleteChains = chainsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // Load users
+                    const usersSnapshot = await db.collection('users').get();
+                    state.allUsers = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // Load notifications for current user
+                    if (state.currentUser) {
+                        const notifsSnapshot = await db.collection('notifications')
+                            .where('userId', '==', state.currentUser.id)
+                            .orderBy('timestamp', 'desc')
+                            .limit(20)
+                            .get();
+                        state.notifications = notifsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    }
+                } else {
+                    // Local fallback
+                    state.ideas = _readLocal('cs_ideas');
+                    state.incompleteChains = _readLocal('cs_incompleteChains');
+                    state.allUsers = _readLocal('cs_users');
+                    if (state.currentUser) {
+                        const allNotifs = _readLocal('cs_notifications');
+                        state.notifications = allNotifs.filter(n => n.userId === state.currentUser.id).sort((a,b) => b.timestamp - a.timestamp).slice(0,20);
+                    }
+                }
+
+                render();
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+
+        // Save idea (Firebase or local)
+        async function saveIdeaToFirebase(idea) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('ideas').doc(idea.id.toString()).set(idea);
+                } else {
+                    const ideas = _readLocal('cs_ideas');
+                    const idx = ideas.findIndex(i => i.id === idea.id);
+                    if (idx >= 0) ideas[idx] = idea; else ideas.unshift(idea);
+                    _writeLocal('cs_ideas', ideas);
+                }
+            } catch (error) {
+                console.error('Error saving idea:', error);
+            }
+        }
+
+        // Save incomplete chain
+        async function saveChainToFirebase(chain) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('incompleteChains').doc(chain.id.toString()).set(chain);
+                } else {
+                    const chains = _readLocal('cs_incompleteChains');
+                    const idx = chains.findIndex(c => c.id === chain.id);
+                    if (idx >= 0) chains[idx] = chain; else chains.unshift(chain);
+                    _writeLocal('cs_incompleteChains', chains);
+                }
+            } catch (error) {
+                console.error('Error saving chain:', error);
+            }
+        }
+
+        // Delete chain
+        async function deleteChainFromFirebase(chainId) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('incompleteChains').doc(chainId.toString()).delete();
+                } else {
+                    const chains = _readLocal('cs_incompleteChains').filter(c => c.id !== chainId);
+                    _writeLocal('cs_incompleteChains', chains);
+                }
+            } catch (error) {
+                console.error('Error deleting chain:', error);
+            }
+        }
+
+        // Update idea
+        async function updateIdeaInFirebase(idea) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('ideas').doc(idea.id.toString()).update(idea);
+                } else {
+                    const ideas = _readLocal('cs_ideas');
+                    const idx = ideas.findIndex(i => i.id === idea.id);
+                    if (idx >= 0) ideas[idx] = idea;
+                    _writeLocal('cs_ideas', ideas);
+                }
+            } catch (error) {
+                console.error('Error updating idea:', error);
+            }
+        }
+
+        // Delete idea
+        async function deleteIdeaFromFirebase(ideaId) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('ideas').doc(ideaId.toString()).delete();
+                } else {
+                    const ideas = _readLocal('cs_ideas').filter(i => i.id !== ideaId);
+                    _writeLocal('cs_ideas', ideas);
+                }
+            } catch (error) {
+                console.error('Error deleting idea:', error);
+            }
+        }
+
+        // Save user
+        async function saveUserToFirebase(user) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('users').doc(user.id).set(user);
+                } else {
+                    const users = _readLocal('cs_users');
+                    const idx = users.findIndex(u => u.id === user.id);
+                    if (idx >= 0) users[idx] = user; else users.unshift(user);
+                    _writeLocal('cs_users', users);
+                }
+            } catch (error) {
+                console.error('Error saving user:', error);
+            }
+        }
+
+        // Save notification
+        async function saveNotificationToFirebase(notification, userId) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('notifications').add({
+                        ...notification,
+                        userId: userId
+                    });
+                } else {
+                    const notifs = _readLocal('cs_notifications');
+                    notifs.unshift({...notification, userId});
+                    _writeLocal('cs_notifications', notifs);
+                }
+            } catch (error) {
+                console.error('Error saving notification:', error);
+            }
+        }
+
+        // Clear notifications for user
+        async function clearNotificationsInFirebase(userId) {
+            try {
+                if (useFirebase && db) {
+                    const snapshot = await db.collection('notifications')
+                        .where('userId', '==', userId)
+                        .get();
+                    
+                    const batch = db.batch();
+                    snapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                } else {
+                    const notifs = _readLocal('cs_notifications').filter(n => n.userId !== userId);
+                    _writeLocal('cs_notifications', notifs);
+                }
+            } catch (error) {
+                console.error('Error clearing notifications:', error);
+            }
+        }
+
+        // ===================================
+        // LUCIDE ICONS
+        // ===================================
+        const icons = {
+            Sparkles: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>`,
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            Bell: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`,
+            User: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+            ThumbsUp: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>`,
+            ThumbsDown: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z"/></svg>`,
+            MessageCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>`,
+            Clock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+            TrendingUp: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+            Flame: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+            BarChart3: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,
+            Users: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+            Activity: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
+            Target: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+            Shield: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+            Zap: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`
+        };
+
+        function getIcon(name, size = 24, className = '') {
+            const svg = icons[name];
+            return svg.replace('width="24" height="24"', `width="${size}" height="${size}" class="${className}"`);
+        }
+
+        // ===================================
+        // STATE MANAGEMENT
+        // ===================================
+        let state = {
+            currentUser: null,
+            showAuth: false,
+            activeTab: 'wall',
+            ideas: [],
+            incompleteChains: [],
+            showSparkModal: false,
+            showContributeModal: false,
+            selectedChain: null,
+            selectedIdea: null,
+            sortBy: 'newest',
+            notifications: [],
+            allUsers: [],
+            showNotifications: false,
+            showUserMenu: false
+        };
+
+        function isAdmin() {
+            return state.currentUser?.role === 'admin';
+        }
+
+        function getAnalytics() {
+            const totalIdeas = state.ideas.length;
+            const totalChains = state.incompleteChains.length;
+            const totalUsers = state.allUsers.length;
+            const totalFragments = state.ideas.reduce((acc, idea) => acc + idea.fragments.length, 0) + 
+                                  state.incompleteChains.reduce((acc, chain) => acc + chain.fragments.length, 0);
+            const totalEngagements = state.ideas.reduce((acc, idea) => acc + idea.likes + idea.dislikes + idea.comments, 0);
+            const activeUsers = state.allUsers.filter(u => u.joinedAt > Date.now() - 86400000 * 7).length;
+            const completionRate = totalChains > 0 ? Math.round((totalIdeas / (totalIdeas + totalChains)) * 100) : 100;
+            
+            return {
+                totalIdeas,
+                totalChains,
+                totalUsers,
+                totalFragments,
+                totalEngagements,
+                activeUsers,
+                completionRate,
+                totalViews: state.ideas.reduce((acc, idea) => acc + idea.views, 0)
+            };
+        }
+
+        // ===================================
+        // EVENT HANDLERS
+        // ===================================
+        
+        function handleLogout() {
+    // Clear localStorage
+    localStorage.removeItem('chainspark_currentUser');
+    
+    state.currentUser = null;
+    state.activeTab = 'wall';
+    state.showNotifications = false;
+    state.showUserMenu = false;
+    state.showSparkModal = false;
+    state.showContributeModal = false;
+    state.selectedIdea = null;
+    state.selectedChain = null;
+    state.notifications = [];
+    
+    // Just re-render to show landing page (no redirect)
+    render();
+}
+
+   async function handleEmailSignup(name, email) {
+    if (email.trim() && name.trim()) {
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            alert('Please enter a valid email address');
+            return;
+        }
+        
+        const emailLower = email.trim().toLowerCase();
+        
+        try {
+            // Check if user already exists in Firestore
+            if (useFirebase && db) {
+                const existingUserSnapshot = await db.collection('users')
+                    .where('email', '==', email.trim())
+                    .get();
+                
+                if (!existingUserSnapshot.empty) {
+                    // User exists, log them in
+                    const existingUser = {
+                        id: existingUserSnapshot.docs[0].id,
+                        ...existingUserSnapshot.docs[0].data()
+                    };
+                    
+                    localStorage.setItem('chainspark_currentUser', JSON.stringify(existingUser));
+                    state.currentUser = existingUser;
+                    
+                    const notif = { 
+                        id: Date.now(), 
+                        message: `Welcome back, ${existingUser.name}!`, 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, existingUser.id);
+                    
+                    state.showAuth = false;
+                    await loadDataFromFirebase();
+                    render();
+                    return;
+                }
+            }
+            
+            // Create new user
+            const newUser = {
+                id: emailLower === 'admin@chainspark.com' ? 'admin' : `user-${Date.now()}`,
+                name: name.trim(),
+                email: email.trim(),
+                role: emailLower === 'admin@chainspark.com' ? 'admin' : 'user',
+                joinedAt: Date.now()
+            };
+            
+            // Save to Firestore
+            await saveUserToFirebase(newUser);
+            
+            // Save to localStorage so user stays logged in
+            localStorage.setItem('chainspark_currentUser', JSON.stringify(newUser));
+            
+            // Set current user in state
+            state.currentUser = newUser;
+            
+            // Create welcome notification
+            const notif = { 
+                id: Date.now(), 
+                message: emailLower === 'admin@chainspark.com' 
+                    ? 'Welcome back, Admin! You have full platform access.' 
+                    : `Welcome to ChainSpark, ${name.trim()}! Start creating sparks.`, 
+                timestamp: Date.now() 
+            };
+            state.notifications.unshift(notif);
+            await saveNotificationToFirebase(notif, newUser.id);
+            
+            // Close the auth modal
+            state.showAuth = false;
+            
+            // Load data and render
+            await loadDataFromFirebase();
+            render();
+            
+        } catch (error) {
+            console.error('Error signing up:', error);
+            alert('Error creating account. Please try again.');
+        }
+    } else {
+        alert('Please fill in both name and email');
+    }
+}
+
+        async function handleStartSpark(text) {
+            if (text.trim() && text.length <= 100) {
+                const newChain = {
+                    id: Date.now(),
+                    fragments: [{ text: text.trim(), userId: state.currentUser.id, userName: state.currentUser.name }],
+                    contributedBy: [state.currentUser.id],
+                    timestamp: Date.now()
+                };
+                
+                state.incompleteChains.unshift(newChain);
+                await saveChainToFirebase(newChain);
+                
+                state.showSparkModal = false;
+                state.activeTab = 'queue';
+                
+                const notif = { 
+                    id: Date.now(), 
+                    message: 'Your spark has been created! Waiting for others to contribute.', 
+                    timestamp: Date.now() 
+                };
+                state.notifications.unshift(notif);
+                await saveNotificationToFirebase(notif, state.currentUser.id);
+                
+                render();
+            }
+        }
+
+        async function handleContribute(text) {
+            if (text.trim() && text.length <= 100 && state.selectedChain) {
+                const updatedFragments = [...state.selectedChain.fragments, { 
+                    text: text.trim(), 
+                    userId: state.currentUser.id, 
+                    userName: state.currentUser.name 
+                }];
+                
+                if (updatedFragments.length === 5) {
+                    // Chain is complete - move to ideas
+                    const newIdea = {
+                        id: state.selectedChain.id,
+                        fragments: updatedFragments,
+                        likes: 0,
+                        dislikes: 0,
+                        comments: 0,
+                        timestamp: Date.now(),
+                        likedBy: [],
+                        dislikedBy: [],
+                        views: 0
+                    };
+                    
+                    state.ideas.unshift(newIdea);
+                    await saveIdeaToFirebase(newIdea);
+                    
+                    state.incompleteChains = state.incompleteChains.filter(c => c.id !== state.selectedChain.id);
+                    await deleteChainFromFirebase(state.selectedChain.id);
+                    
+                    const notif = { 
+                        id: Date.now(), 
+                        message: '🎉 Your chain is complete! Check it out on the Idea Wall.', 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, state.currentUser.id);
+                } else {
+                    // Update chain
+                    const updatedChain = {
+                        ...state.selectedChain,
+                        fragments: updatedFragments,
+                        contributedBy: [...state.selectedChain.contributedBy, state.currentUser.id]
+                    };
+                    
+                    state.incompleteChains = state.incompleteChains.map(c => 
+                        c.id === state.selectedChain.id ? updatedChain : c
+                    );
+                    await saveChainToFirebase(updatedChain);
+                    
+                    const notif = { 
+                        id: Date.now(), 
+                        message: `Contribution added! Chain is now ${updatedFragments.length}/5 complete.`, 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, state.currentUser.id);
+                }
+                
+                state.showContributeModal = false;
+                state.selectedChain = null;
+                render();
+            }
+        }
+
+        async function handleLike() {
+            if (state.currentUser && state.selectedIdea && !state.selectedIdea.likedBy.includes(state.currentUser.id)) {
+                const updatedIdea = {
+                    ...state.selectedIdea,
+                    likes: state.selectedIdea.likes + 1,
+                    likedBy: [...state.selectedIdea.likedBy, state.currentUser.id],
+                    dislikes: state.selectedIdea.dislikedBy.includes(state.currentUser.id) 
+                        ? state.selectedIdea.dislikes - 1 
+                        : state.selectedIdea.dislikes,
+                    dislikedBy: state.selectedIdea.dislikedBy.filter(id => id !== state.currentUser.id)
+                };
+                
+                state.ideas = state.ideas.map(i => i.id === state.selectedIdea.id ? updatedIdea : i);
+                state.selectedIdea = updatedIdea;
+                
+                await updateIdeaInFirebase(updatedIdea);
+                render();
+            }
+        }
+
+        async function handleDislike() {
+            if (state.currentUser && state.selectedIdea && !state.selectedIdea.dislikedBy.includes(state.currentUser.id)) {
+                const updatedIdea = {
+                    ...state.selectedIdea,
+                    dislikes: state.selectedIdea.dislikes + 1,
+                    dislikedBy: [...state.selectedIdea.dislikedBy, state.currentUser.id],
+                    likes: state.selectedIdea.likedBy.includes(state.currentUser.id) 
+                        ? state.selectedIdea.likes - 1 
+                        : state.selectedIdea.likes,
+                    likedBy: state.selectedIdea.likedBy.filter(id => id !== state.currentUser.id)
+                };
+                
+                state.ideas = state.ideas.map(i => i.id === state.selectedIdea.id ? updatedIdea : i);
+                state.selectedIdea = updatedIdea;
+                
+                await updateIdeaInFirebase(updatedIdea);
+                render();
+            }
+        }
+
+        async function handleDeleteIdea() {
+            if (confirm('Are you sure you want to delete this idea? This action cannot be undone.')) {
+                await deleteIdeaFromFirebase(state.selectedIdea.id);
+                state.ideas = state.ideas.filter(i => i.id !== state.selectedIdea.id);
+                state.selectedIdea = null;
+                
+                const notif = { 
+                    id: Date.now(), 
+                    message: 'Idea deleted successfully.', 
+                    timestamp: Date.now() 
+                };
+                state.notifications.unshift(notif);
+                await saveNotificationToFirebase(notif, state.currentUser.id);
+                
+                render();
+            }
+        }
+
+        async function clearAllNotifications() {
+            if (state.currentUser) {
+                await clearNotificationsInFirebase(state.currentUser.id);
+                state.notifications = [];
+                render();
+            }
+        }
+
+        // ===================================
+        // RENDER FUNCTIONS
+        // ===================================
+
+        function renderHeader() {
+            return `
+                <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+                    <div class="max-w-7xl mx-auto px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3 ${state.currentUser ? 'cursor-pointer' : ''}" onclick="${state.currentUser ? 'state.activeTab = \'wall\'; render();' : ''}">
+                                <div class="text-blue-600">${getIcon('Sparkles', 32)}</div>
+                                <h1 class="text-2xl font-bold text-slate-800">ChainSpark</h1>
+                                ${isAdmin() ? `
+                                    <span class="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs px-3 py-1 rounded-full font-semibold flex items-center gap-1">
+                                        ${getIcon('Shield', 12)}
+                                        ADMIN
+                                    </span>
+                                ` : ''}
+                            </div>
+                            <div class="flex items-center gap-3">
+                                ${state.currentUser ? `
+                                    <button onclick="state.showSparkModal = true; render();" class="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                        ${getIcon('Plus', 20)}
+                                        <span class="hidden sm:inline">Start a Spark</span>
+                                    </button>
+                                    <div class="relative">
+                                        <button onclick="state.showNotifications = !state.showNotifications; render();" class="relative p-2 hover:bg-slate-100 rounded-full transition">
+                                            <div class="text-slate-600">${getIcon('Bell', 24)}</div>
+                                            ${state.notifications.length > 0 ? '<span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>' : ''}
+                                        </button>
+                                        ${state.showNotifications ? `
+                                            <div class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border-2 border-slate-200 p-4 z-50 max-h-96 overflow-y-auto">
+                                                <div class="flex items-center justify-between mb-3">
+                                                    <h3 class="font-bold text-slate-800">Notifications</h3>
+                                                    ${state.notifications.length > 0 ? `
+                                                        <button onclick="clearAllNotifications();" class="text-xs text-blue-600 hover:text-blue-700">Clear all</button>
+                                                    ` : ''}
+                                                </div>
+                                                ${state.notifications.length > 0 ? `
+                                                    <div class="space-y-2">
+                                                        ${state.notifications.map(notif => `
+                                                            <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+                                                                <p class="text-slate-800">${notif.message}</p>
+                                                                <p class="text-xs text-slate-500 mt-1">${new Date(notif.timestamp).toLocaleTimeString()}</p>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                ` : '<p class="text-slate-500 text-sm text-center py-4">No new notifications</p>'}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    <div class="relative">
+                                        <button onclick="state.showUserMenu = !state.showUserMenu; render();" class="flex items-center gap-2 hover:bg-slate-100 rounded-full p-2 transition">
+                                            <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                                                ${state.currentUser.name[0]}
+                                            </div>
+                                        </button>
+                                        ${state.showUserMenu ? `
+                                            <div class="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-slate-200 overflow-hidden z-50">
+                                                <div class="p-4 border-b border-slate-200 bg-slate-50"> <p class="font-semibold text-slate-800">${state.currentUser.name}</p>
+                                                    <p class="text-xs text-slate-600 mt-1">${state.currentUser.email}</p>
+                                                </div>
+                                                <button onclick="state.activeTab = 'profile'; state.showUserMenu = false; render();" class="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2">
+                                                    ${getIcon('User', 16)}
+                                                    View Profile
+                                                </button>
+                                                ${isAdmin() ? `
+                                                    <button onclick="state.activeTab = 'analytics'; state.showUserMenu = false; render();" class="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2">
+                                                        ${getIcon('BarChart3', 16)}
+                                                        Analytics Dashboard
+                                                    </button>
+                                                ` : ''}
+                                                <button onclick="handleLogout();" class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition border-t border-slate-200 flex items-center gap-2 font-semibold">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                                    </svg>
+                                                    Log Out
+                                                </button>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                ` : `
+                                    <button onclick="state.showAuth = true; render();" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                        Sign In
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </header>
+            `;
+        }
+
+        function renderAuthModal() {
+            if (!state.showAuth) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+                        <h2 class="text-3xl font-bold mb-2 text-slate-800">Welcome to ChainSpark</h2>
+                        <p class="text-slate-600 mb-6">Co-create ideas, one spark at a time</p>
+                        <div class="space-y-3">
+                            <input type="text" id="signup-name" placeholder="Your name" class="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                            <input type="email" id="signup-email" placeholder="Enter your email" class="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                            <button onclick="
+                                const name = document.getElementById('signup-name').value;
+                                const email = document.getElementById('signup-email').value;
+                                handleEmailSignup(name, email);
+                            " class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                Create Account
+                            </button>
+                        </div>
+                        <button onclick="state.showAuth = false; render();" class="mt-4 text-slate-500 hover:text-slate-700 text-sm w-full">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStartSparkModal() {
+            if (!state.showSparkModal) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-amber-500">${getIcon('Sparkles', 28)}</div>
+                            <h2 class="text-2xl font-bold text-slate-800">Start a Spark</h2>
+                        </div>
+                        <p class="text-slate-600 mb-4">Begin an idea with a short fragment. Four others will continue it!</p>
+                        <textarea id="spark-text" placeholder="What if technology could..." maxlength="100" class="w-full border-2 border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-32"></textarea>
+                        <div class="flex justify-between items-center mt-2 mb-6">
+                            <span id="spark-char-count" class="text-sm text-slate-500">0/100 characters</span>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="state.showSparkModal = false; render();" class="flex-1 px-6 py-3 border-2 border-slate-300 rounded-lg font-semibold hover:bg-slate-50 transition">Cancel</button>
+                            <button onclick="
+                                const text = document.getElementById('spark-text').value;
+                                handleStartSpark(text);
+                            " class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">Spark It</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderContributeModal() {
+            if (!state.showContributeModal || !state.selectedChain) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-emerald-500">${getIcon('Plus', 28)}</div>
+                            <h2 class="text-2xl font-bold text-slate-800">Add Your Spark</h2>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto border border-slate-200">
+                            <p class="text-sm text-slate-600 mb-2">Current chain:</p>
+                            ${state.selectedChain.fragments.map((frag, idx) => `
+                                <p class="text-slate-800 mb-2"><span class="font-semibold">${idx + 1}.</span> ${frag.text}</p>
+                            `).join('')}
+                            <p class="text-slate-400 italic">${state.selectedChain.fragments.length}/5 - Add fragment ${state.selectedChain.fragments.length + 1}...</p>
+                        </div>
+                        <textarea id="contribute-text" placeholder="Continue the idea..." maxlength="100" class="w-full border-2 border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none h-32"></textarea>
+                        <div class="flex justify-between items-center mt-2 mb-6">
+                            <span id="contribute-char-count" class="text-sm text-slate-500">0/100 characters</span>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="state.showContributeModal = false; state.selectedChain = null; render();" class="flex-1 px-6 py-3 border-2 border-slate-300 rounded-lg font-semibold hover:bg-slate-50 transition">Cancel</button>
+                            <button onclick="
+                                const text = document.getElementById('contribute-text').value;
+                                handleContribute(text);
+                            " class="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition shadow-sm">Contribute</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderIdeaDetailModal() {
+            if (!state.selectedIdea) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                    <div class="bg-white rounded-2xl p-8 max-w-2xl w-full my-8 shadow-2xl">
+                        <div class="flex items-start gap-3 mb-6">
+                            <div class="text-blue-600 flex-shrink-0 mt-1">${getIcon('Sparkles', 24)}</div>
+                            <div class="flex-1">
+                                <h2 class="text-2xl font-bold text-slate-800 mb-4">
+                                    ${state.selectedIdea.fragments.map(f => f.text).join(' ')}
+                                </h2>
+                                ${isAdmin() ? `
+                                    <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                                        <p class="text-amber-800"><strong>Admin Stats:</strong> ${state.selectedIdea.views} views • Created ${new Date(state.selectedIdea.timestamp).toLocaleString()}</p>
+                                    </div>
+                                ` : ''}
+                                <div class="flex flex-wrap gap-2 mb-4">
+                                    ${state.selectedIdea.fragments.map((frag, idx) => `
+                                        <div class="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
+                                            <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">${frag.userName[0]}</div>
+                                            <span class="text-sm text-slate-700">${frag.userName}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                <div class="flex gap-4 mb-6 flex-wrap">
+                                    <button onclick="handleLike();" class="flex items-center gap-2 px-4 py-2 rounded-lg transition ${state.selectedIdea.likedBy.includes(state.currentUser?.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                        ${getIcon('ThumbsUp', 18)}
+                                        <span class="font-semibold">${state.selectedIdea.likes}</span>
+                                    </button>
+                                    <button onclick="handleDislike();" class="flex items-center gap-2 px-4 py-2 rounded-lg transition ${state.selectedIdea.dislikedBy.includes(state.currentUser?.id) ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                        ${getIcon('ThumbsDown', 18)}
+                                        <span class="font-semibold">${state.selectedIdea.dislikes}</span>
+                                    </button>
+                                    ${isAdmin() ? `
+                                        <button onclick="handleDeleteIdea();" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition ml-auto">
+                                            Delete Idea
+                                        </button>
+                                    ` : ''}
+                                </div>
+                                <div class="border-t pt-6 border-slate-200">
+                                    <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                        ${getIcon('MessageCircle', 20)}Comments
+                                    </h3>
+                                    <div id="comments-list" class="space-y-4 mb-4 max-h-64 overflow-y-auto">
+                                        <p class="text-slate-400 text-sm italic">No comments yet. Be the first!</p>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="comment-input" placeholder="Add a comment..." maxlength="300" class="flex-1 border-2 border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                        <button onclick="
+                                            const comment = document.getElementById('comment-input').value;
+                                            if (comment.trim()) {
+                                                const commentsList = document.getElementById('comments-list');
+                                                const newComment = \`
+                                                    <div class='bg-slate-50 rounded-lg p-3 border border-slate-200'>
+                                                        <div class='flex items-center gap-2 mb-1'>
+                                                            <div class='w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold'>\${state.currentUser.name[0]}</div>
+                                                            <span class='font-semibold text-sm text-slate-800'>\${state.currentUser.name}</span>
+                                                            <span class='text-xs text-slate-500 ml-auto'>\${new Date().toLocaleTimeString()}</span>
+                                                        </div>
+                                                        <p class='text-slate-700 text-sm'>\${comment}</p>
+                                                    </div>
+                                                \`;
+                                                if (commentsList.innerHTML.includes('No comments yet')) {
+                                                    commentsList.innerHTML = newComment;
+                                                } else {
+                                                    commentsList.innerHTML += newComment;
+                                                }
+                                                document.getElementById('comment-input').value = '';
+                                                const updatedIdea = {...state.selectedIdea, comments: state.selectedIdea.comments + 1};
+                                                state.ideas = state.ideas.map(i => i.id === state.selectedIdea.id ? updatedIdea : i);
+                                                state.selectedIdea = updatedIdea;
+                                                updateIdeaInFirebase(updatedIdea);
+                                            }
+                                        " class="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">Post</button>
+                                    </div>
+                                    <p id="comment-char-count" class="text-xs text-slate-500 mt-1">0/300</p>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="state.selectedIdea = null; render();" class="w-full px-6 py-3 border-2 border-slate-300 rounded-lg font-semibold hover:bg-slate-50 transition">Close</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAnalyticsDashboard() {
+            const analytics = getAnalytics();
+            
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                ${getIcon('BarChart3', 28, 'text-blue-600')}
+                                Platform Analytics
+                            </h2>
+                            <p class="text-slate-600 mt-1">Real-time insights into ChainSpark activity</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Sparkles', 24)}
+                                <span class="text-blue-100 text-sm font-semibold">TOTAL</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalIdeas}</p>
+                            <p class="text-blue-100 text-sm">Completed Ideas</p>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Zap', 24)}
+                                <span class="text-emerald-100 text-sm font-semibold">ACTIVE</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalChains}</p>
+                            <p class="text-emerald-100 text-sm">In Progress</p>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Users', 24)}
+                                <span class="text-amber-100 text-sm font-semibold">COMMUNITY</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalUsers}</p>
+                            <p class="text-amber-100 text-sm">Total Users</p>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Activity', 24)}
+                                <span class="text-purple-100 text-sm font-semibold">ENGAGEMENT</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalEngagements}</p>
+                            <p class="text-purple-100 text-sm">Total Interactions</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white border-2 border-slate-200 rounded-xl p-6 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                ${getIcon('Target', 20, 'text-blue-600')}
+                                Key Metrics
+                            </h3>
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Total Fragments</span>
+                                    <span class="text-2xl font-bold text-slate-800">${analytics.totalFragments}</span>
+                                </div>
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Total Views</span>
+                                    <span class="text-2xl font-bold text-slate-800">${analytics.totalViews}</span>
+                                </div>
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Active Users (7d)</span>
+                                    <span class="text-2xl font-bold text-slate-800">${analytics.activeUsers}</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-slate-600">Completion Rate</span>
+                                    <span class="text-2xl font-bold text-emerald-600">${analytics.completionRate}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white border-2 border-slate-200 rounded-xl p-6 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                ${getIcon('TrendingUp', 20, 'text-emerald-600')}
+                                Top Performing Ideas
+                            </h3>
+                            ${state.ideas.length > 0 ? `
+                                <div class="space-y-3">
+                                    ${state.ideas.sort((a, b) => (b.likes + b.views) - (a.likes + a.views)).slice(0, 3).map((idea, idx) => `
+                                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 hover:border-blue-300 transition cursor-pointer" onclick="state.selectedIdea = state.ideas.find(i => i.id === ${idea.id}); render();">
+                                            <div class="flex items-start gap-2">
+                                                <span class="text-lg font-bold text-slate-400">#${idx + 1}</span>
+                                                <div class="flex-1">
+                                                    <p class="text-sm text-slate-800 line-clamp-2">${idea.fragments.map(f => f.text).join(' ')}</p>
+                                                    <div class="flex gap-3 mt-2 text-xs text-slate-600">
+                                                        <span class="flex items-center gap-1">
+                                                            ${getIcon('ThumbsUp', 12)}
+                                                            ${idea.likes}
+                                                        </span>
+                                                        <span class="flex items-center gap-1">
+                                                            ${getIcon('MessageCircle', 12)}
+                                                            ${idea.comments}
+                                                        </span>
+                                                        <span class="flex items-center gap-1">
+                                                            ${getIcon('Activity', 12)}
+                                                            ${idea.views} views
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `
+                                <div class="text-center py-8">
+                                    ${getIcon('TrendingUp', 40, 'mx-auto text-slate-300 mb-3')}
+                                    <p class="text-slate-500 text-sm">No ideas yet. Start creating!</p>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+
+                    <div class="bg-white border-2 border-slate-200 rounded-xl p-6 shadow-sm">
+                        <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            ${getIcon('Users', 20, 'text-blue-600')}
+                            User Management
+                        </h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-slate-200">
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">User</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Email</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Role</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Joined</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Contributions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${state.allUsers.map(user => {
+                                        const userContributions = state.ideas.reduce((acc, idea) => acc + idea.fragments.filter(f => f.userId === user.id).length, 0);
+                                        return `
+                                            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+                                                <td class="py-3 px-4">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                                            ${user.name[0]}
+                                                        </div>
+                                                        <span class="text-sm font-medium text-slate-800">${user.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3 px-4 text-sm text-slate-600">${user.email}</td>
+                                                <td class="py-3 px-4">
+                                                    ${user.role === 'admin' ? `
+                                                        <span class="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs px-2 py-1 rounded-full font-semibold">Admin</span>
+                                                    ` : `
+                                                        <span class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-full font-semibold">User</span>
+                                                    `}
+                                                </td>
+                                                <td class="py-3 px-4 text-sm text-slate-600">
+                                                    ${new Date(user.joinedAt).toLocaleDateString()}
+                                                </td>
+                                                <td class="py-3 px-4 text-sm font-semibold text-slate-800">${userContributions}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderIdeaWall() {
+            const sortedIdeas = [...state.ideas].sort((a, b) => {
+                if (state.sortBy === 'newest') return b.timestamp - a.timestamp;
+                if (state.sortBy === 'top') return b.likes - a.likes;
+                if (state.sortBy === 'rising') return (b.likes + b.comments) - (a.likes + a.comments);
+                return 0;
+            });
+
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-2xl font-bold text-slate-800">Idea Wall</h2>
+                        <div class="flex gap-2">
+                            <button onclick="state.sortBy = 'newest'; render();" class="flex items-center gap-1 px-4 py-2 rounded-lg font-semibold transition ${state.sortBy === 'newest' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                ${getIcon('Clock', 16)}Newest
+                            </button>
+                            <button onclick="state.sortBy = 'rising'; render();" class="flex items-center gap-1 px-4 py-2 rounded-lg font-semibold transition ${state.sortBy === 'rising' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                ${getIcon('TrendingUp', 16)}Rising
+                            </button>
+                            <button onclick="state.sortBy = 'top'; render();" class="flex items-center gap-1 px-4 py-2 rounded-lg font-semibold transition ${state.sortBy === 'top' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                ${getIcon('Flame', 16)}Top
+                            </button>
+                        </div>
+                    </div>
+                    ${sortedIdeas.length > 0 ? `
+                        <div class="grid gap-4">
+                            ${sortedIdeas.map(idea => `
+                                <div class="bg-white border-2 border-slate-200 rounded-xl p-6 hover:border-blue-300 transition cursor-pointer shadow-sm" onclick="state.selectedIdea = state.ideas.find(i => i.id === ${idea.id}); render();">
+                                    <p class="text-lg text-slate-800 mb-4 leading-relaxed">${idea.fragments.map(f => f.text).join(' ')}</p>
+                                    <div class="flex flex-wrap gap-2 mb-4">
+                                        ${idea.fragments.map((frag, idx) => `
+                                            <div class="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
+                                                <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">${frag.userName[0]}</div>
+                                                <span class="text-sm text-slate-700">${frag.userName}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <div class="flex gap-4 items-center">
+                                        <button class="flex items-center gap-2 text-slate-600 hover:text-emerald-600 transition">
+                                            ${getIcon('ThumbsUp', 18)}
+                                            <span class="font-semibold">${idea.likes}</span>
+                                        </button>
+                                        <button class="flex items-center gap-2 text-slate-600 hover:text-red-600 transition">
+                                            ${getIcon('ThumbsDown', 18)}
+                                            <span class="font-semibold">${idea.dislikes}</span>
+                                        </button>
+                                        <button class="flex items-center gap-2 text-slate-600 hover:text-blue-600 transition">
+                                            ${getIcon('MessageCircle', 18)}
+                                            <span class="font-semibold">${idea.comments}</span>
+                                        </button>
+                                        ${isAdmin() ? `
+                                            <span class="ml-auto flex items-center gap-1 text-sm text-slate-500">
+                                                ${getIcon('Activity', 14)}
+                                                ${idea.views} views
+                                            </span>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="text-center py-16 bg-white border-2 border-slate-200 rounded-xl shadow-sm">
+                            ${getIcon('Sparkles', 56, 'mx-auto text-slate-300 mb-4')}
+                            <h3 class="text-xl font-bold text-slate-800 mb-2">No Ideas Yet</h3>
+                            <p class="text-slate-500 mb-6">Be the first to create a spark and start a collaborative idea!</p>
+                            <button onclick="state.showSparkModal = true; render();" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                Start Your First Spark
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderContributionQueue() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-2xl font-bold text-slate-800">Contribution Queue</h2>
+                        <p class="text-slate-600">${state.incompleteChains.length} chains waiting</p>
+                    </div>
+                    ${state.incompleteChains.length > 0 ? `
+                        <div class="grid gap-4">
+                            ${state.incompleteChains.map(chain => {
+                                const canContribute = !chain.contributedBy.includes(state.currentUser?.id);
+                                return `
+                                    <div class="bg-white border-2 border-slate-200 rounded-xl p-6 hover:border-emerald-300 transition shadow-sm">
+                                        <div class="flex items-center gap-2 mb-4">
+                                            <div class="flex-1 bg-slate-200 rounded-full h-2">
+                                                <div class="bg-emerald-500 h-2 rounded-full transition-all" style="width: ${(chain.fragments.length / 5) * 100}%"></div>
+                                            </div>
+                                            <span class="text-sm font-bold text-slate-600">${chain.fragments.length}/5</span>
+                                        </div>
+                                        <div class="space-y-2 mb-4">
+                                            ${chain.fragments.map((frag, idx) => `
+                                                <div class="flex gap-2">
+                                                    <span class="text-slate-400 font-bold">${idx + 1}.</span>
+                                                    <p class="text-slate-800">${frag.text}</p>
+                                                </div>
+                                            `).join('')}
+                                            ${[...Array(5 - chain.fragments.length)].map((_, idx) => `
+                                                <div class="flex gap-2">
+                                                    <span class="text-slate-300 font-bold">${chain.fragments.length + idx + 1}.</span>
+                                                    <p class="text-slate-300 italic">Waiting for contribution...</p>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <button
+                                            onclick="${!state.currentUser ? 'state.showAuth = true; render();' : (canContribute ? `state.selectedChain = state.incompleteChains.find(c => c.id === ${chain.id}); state.showContributeModal = true; render();` : '')}"
+                                            ${state.currentUser && !canContribute ? 'disabled' : ''}
+                                            class="w-full px-6 py-3 rounded-lg font-semibold transition ${state.currentUser && !canContribute ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}"
+                                        >
+                                            ${state.currentUser && !canContribute ? 'Already Contributed' : 'Add Your Spark'}
+                                        </button>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : `
+                        <div class="text-center py-16 bg-white border-2 border-slate-200 rounded-xl shadow-sm">
+                            ${getIcon('Zap', 56, 'mx-auto text-slate-300 mb-4')}
+                            <h3 class="text-xl font-bold text-slate-800 mb-2">No Chains in Queue</h3>
+                            <p class="text-slate-500 mb-6">Start a new spark to begin a collaborative chain!</p>
+                            <button onclick="state.showSparkModal = true; render();" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                Start a Spark
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderProfilePage() {
+            const userIdeas = state.ideas.filter(idea => idea.fragments.some(f => f.userId === state.currentUser?.id));
+            const userFragments = state.ideas.reduce((acc, idea) => acc + idea.fragments.filter(f => f.userId === state.currentUser?.id).length, 0);
+            const totalReactions = userIdeas.reduce((acc, idea) => acc + idea.likes - idea.dislikes, 0);
+
+            return `
+                <div class="space-y-6">
+                    <div class="bg-white border-2 border-slate-200 rounded-xl p-8 shadow-sm">
+                        <div class="flex items-start gap-6">
+                            <div class="w-24 h-24 bg-blue-500 rounded-full flex items-center justify-center text-white text-4xl font-bold flex-shrink-0">
+                                ${state.currentUser?.name[0]}
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <h2 class="text-3xl font-bold text-slate-800">${state.currentUser?.name}</h2>
+                                    ${isAdmin() ? `
+                                        <span class="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs px-3 py-1 rounded-full font-semibold flex items-center gap-1">
+                                            ${getIcon('Shield', 12)}
+                                            ADMIN
+                                        </span>
+                                    ` : ''}
+                                </div>
+                                <p class="text-slate-600 mb-6">${state.currentUser?.email}</p>
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div class="bg-blue-50 rounded-lg p-4 text-center border border-blue-100">
+                                        <p class="text-3xl font-bold text-blue-600">${userFragments}</p>
+                                        <p class="text-sm text-slate-600 mt-1">Sparks Added</p>
+                                    </div>
+                                    <div class="bg-emerald-50 rounded-lg p-4 text-center border border-emerald-100">
+                                        <p class="text-3xl font-bold text-emerald-600">${userIdeas.length}</p>
+                                        <p class="text-sm text-slate-600 mt-1">Ideas Completed</p>
+                                    </div>
+                                    <div class="bg-amber-50 rounded-lg p-4 text-center border border-amber-100">
+                                        <p class="text-3xl font-bold text-amber-600">${totalReactions}</p>
+                                        <p class="text-sm text-slate-600 mt-1">Total Reactions</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Your Contributions</h3>
+                        ${userIdeas.length > 0 ? `
+                            <div class="grid gap-4">
+                                ${userIdeas.map(idea => `
+                                    <div class="bg-white border-2 border-slate-200 rounded-xl p-6 hover:border-blue-300 transition cursor-pointer shadow-sm" onclick="state.selectedIdea = state.ideas.find(i => i.id === ${idea.id}); render();">
+                                        <p class="text-lg text-slate-800 mb-4 leading-relaxed">
+                                            ${idea.fragments.map((f, idx) => `
+                                                <span class="${f.userId === state.currentUser?.id ? 'bg-amber-100 px-1 rounded' : ''}">
+                                                    ${f.text}${idx < idea.fragments.length - 1 ? ' ' : ''}
+                                                </span>
+                                            `).join('')}
+                                        </p>
+                                        <div class="flex gap-4">
+                                            <span class="flex items-center gap-2 text-slate-600">
+                                                ${getIcon('ThumbsUp', 18)}
+                                                <span class="font-semibold">${idea.likes}</span>
+                                            </span>
+                                            <span class="flex items-center gap-2 text-slate-600">
+                                                ${getIcon('MessageCircle', 18)}
+                                                <span class="font-semibold">${idea.comments}</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div class="text-center py-12 bg-white border-2 border-slate-200 rounded-xl shadow-sm">
+                                ${getIcon('User', 48, 'mx-auto text-slate-300 mb-4')}
+                                <p class="text-slate-500 mb-4">You haven't contributed to any completed ideas yet.</p>
+                                <button onclick="state.activeTab = 'queue'; render();" class="text-blue-600 hover:text-blue-700 font-semibold">
+                                    Browse Contribution Queue →
+                                </button>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLandingPage() {
+            return `
+                <div class="text-center py-16">
+                    ${getIcon('Sparkles', 64, 'mx-auto text-blue-600 mb-6')}
+                    <h2 class="text-4xl font-bold text-slate-800 mb-4">Welcome to ChainSpark</h2>
+                    <p class="text-xl text-slate-600 mb-8 max-w-2xl mx-auto">
+                        Co-create ideas collaboratively. Start with a spark, build chains with others, and watch ideas come to life.
+                    </p>
+                    <div class="bg-white rounded-2xl p-8 max-w-4xl mx-auto mb-8 border-2 border-slate-200 shadow-sm">
+                        <h3 class="text-2xl font-bold text-slate-800 mb-6">How it works</h3>
+                        <div class="grid md:grid-cols-3 gap-8">
+                            <div class="text-center">
+                                <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    ${getIcon('Sparkles', 36, 'text-blue-600')}
+                                </div>
+                                <h4 class="font-bold text-slate-800 mb-2 text-lg">1. Start a Spark</h4>
+                                <p class="text-slate-600">Begin an idea with a short 100-character fragment</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    ${getIcon('Plus', 36, 'text-emerald-600')}
+                                </div>
+                                <h4 class="font-bold text-slate-800 mb-2 text-lg">2. Contribute</h4>
+                                <p class="text-slate-600">Add your fragment to existing chains in the queue</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    ${getIcon('Flame', 36, 'text-amber-600')}
+                                </div>
+                                <h4 class="font-bold text-slate-800 mb-2 text-lg">3. See Ideas on the Wall</h4>
+                                <p class="text-slate-600">After 5 contributions, ideas are completed and shared</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="state.showAuth = true; render();" class="bg-blue-600 text-white px-10 py-4 rounded-lg text-lg font-bold hover:bg-blue-700 transition shadow-lg hover:shadow-xl">
+                        Get Started
+                    </button>
+                </div>
+            `;
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            
+            let content = '';
+            
+            content += renderHeader();
+            
+            content += '<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">';
+            
+            if (!state.currentUser) {
+                content += renderLandingPage();
+            } else {
+                // Tab navigation
+                content += `
+                    <div class="flex gap-4 mb-8 border-b border-slate-200 overflow-x-auto pb-0">
+                        <button onclick="state.activeTab = 'wall'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap ${state.activeTab === 'wall' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+                            Idea Wall
+                        </button>
+                        <button onclick="state.activeTab = 'queue'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap ${state.activeTab === 'queue' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+                            Contribution Queue
+                            ${state.incompleteChains.length > 0 ? `
+                                <span class="ml-2 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full">
+                                    ${state.incompleteChains.length}
+                                </span>
+                            ` : ''}
+                        </button>
+                        ${isAdmin() ? `
+                            <button onclick="state.activeTab = 'analytics'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap flex items-center gap-2 ${state.activeTab === 'analytics' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+                                ${getIcon('BarChart3', 18)}
+                                Analytics
+                            </button>
+                        ` : ''}
+                        <button onclick="state.activeTab = 'profile'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap ${state.activeTab === 'profile' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+                            Profile
+                        </button>
+                    </div>
+                `;
+                
+                // Tab content
+                if (state.activeTab === 'wall') {
+                    content += renderIdeaWall();
+                } else if (state.activeTab === 'queue') {
+                    content += renderContributionQueue();
+                } else if (state.activeTab === 'analytics' && isAdmin()) {
+                    content += renderAnalyticsDashboard();
+                } else if (state.activeTab === 'profile') {
+                    content += renderProfilePage();
+                }
+            }
+            
+            content += '</main>';
+            
+            // Modals
+            content += renderAuthModal();
+            content += renderStartSparkModal();
+            content += renderContributeModal();
+            content += renderIdeaDetailModal();
+            
+            app.innerHTML = content;
+            
+            // Add event listeners for character counters
+            setTimeout(() => {
+                const sparkText = document.getElementById('spark-text');
+                if (sparkText) {
+                    sparkText.addEventListener('input', (e) => {
+                        const count = document.getElementById('spark-char-count');
+                        if (count) {
+                            count.textContent = `${e.target.value.length}/100 characters`;
+                            count.className = e.target.value.length > 90 ? 'text-sm text-red-500' : 'text-sm text-slate-500';
+                        }
+                    });
+                }
+                
+                const contributeText = document.getElementById('contribute-text');
+                if (contributeText) {
+                    contributeText.addEventListener('input', (e) => {
+                        const count = document.getElementById('contribute-char-count');
+                        if (count) {
+                            count.textContent = `${e.target.value.length}/100 characters`;
+                            count.className = e.target.value.length > 90 ? 'text-sm text-red-500' : 'text-sm text-slate-500';
+                        }
+                    });
+                }
+                
+                const commentInput = document.getElementById('comment-input');
+                if (commentInput) {
+                    commentInput.addEventListener('input', (e) => {
+                        const count = document.getElementById('comment-char-count');
+                        if (count) {
+                            count.textContent = `${e.target.value.length}/300`;
+                        }
+                    });
+                }
+            }, 0);
+        }
+
+        // ===================================
+        // INITIALIZATION
+        // ===================================
+        
+        // Load data on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadDataFromFirebase();
+        });
+
+        // Initial render
+        // Ensure localStorage keys exist for local mode
+        if (!useFirebase) {
+            if (!localStorage.getItem('cs_ideas')) _writeLocal('cs_ideas', []);
+            if (!localStorage.getItem('cs_incompleteChains')) _writeLocal('cs_incompleteChains', []);
+            if (!localStorage.getItem('cs_users')) _writeLocal('cs_users', []);
+            if (!localStorage.getItem('cs_notifications')) _writeLocal('cs_notifications', []);
+        }
+
+                // Check if user is logged in
+        // Check if user is logged in
+        const savedUser = localStorage.getItem('chainspark_currentUser');
+        if (savedUser) {
+            state.currentUser = JSON.parse(savedUser);
+            console.log('User logged in:', state.currentUser);
+        }
+        // If not logged in, just show landing page (no redirect)
+
+        render();
+    </script>
+</body>
+</html>
