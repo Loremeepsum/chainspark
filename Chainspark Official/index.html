@@ -1,0 +1,2213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChainSpark - Co-create Ideas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Aleo:wght@300;400;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    
+    <style>
+    :root {
+        --cs-text: #1c2125; /* primary text */
+        --cs-bg-light: #fcf9f3; /* site background */
+        --cs-secondary: #f8da4b; /* secondary 1 */
+        --cs-accent: #eea844; /* secondary 2 / CTA */
+        --cs-primary: var(--cs-text); /* map legacy primary to text */
+        --cs-primary-700: #1a1f23; /* darker text */
+        --cs-bg-dark: #1d2328; /* dark */
+    }
+    /* Header logo swap for dark mode */
+    .header-logo-dark { display: none; }
+    .dark-mode .header-logo-light { display: none !important; }
+    .dark-mode .header-logo-dark { display: inline-block !important; }
+    /* Brand overrides for common Tailwind blue utilities */
+    /* Prevent layout shift when scrollbars appear */
+    html { scrollbar-gutter: stable; }
+    body { overflow-y: scroll; }
+    /* Map existing blue utility classes to brand (CTA uses accent/orange) */
+    .text-blue-600 { color: var(--cs-accent) !important; }
+    .hover\:text-blue-700:hover { color: var(--cs-secondary) !important; }
+    .bg-blue-600 { background-color: var(--cs-accent) !important; }
+    .hover\:bg-blue-700:hover { background-color: var(--cs-secondary) !important; }
+    .border-blue-600 { border-color: var(--cs-accent) !important; }
+    .border-blue-100 { border-color: color-mix(in srgb, var(--cs-accent) 20%, white) !important; }
+    .focus\:ring-blue-500:focus { --tw-ring-color: var(--cs-accent) !important; }
+    .text-amber-600, .text-amber-500 { color: var(--cs-accent) !important; }
+    .bg-amber-100 { background-color: color-mix(in srgb, var(--cs-accent) 20%, white) !important; }
+    body {
+        font-family: 'Lato', sans-serif;
+        transition: background-color 0.3s ease;
+        color: var(--cs-text);
+    }
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Aleo', serif;
+    }
+    
+    /* ========== ANIMATIONS ========== */
+    
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    @keyframes slideInUp {
+        from {
+            opacity: 0;
+            transform: translateY(40px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    
+    @keyframes confetti {
+        0% {
+            transform: translateY(0) rotate(0deg);
+            opacity: 1;
+        }
+        100% {
+            transform: translateY(-1000px) rotate(720deg);
+            opacity: 0;
+        }
+    }
+    
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+    }
+    
+    @keyframes glow {
+        0%, 100% { box-shadow: 0 0 5px rgba(59, 130, 246, 0.5); }
+        50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.8); }
+    }
+    /* Reaction pop animation for like/dislike */
+    @keyframes reaction-pop { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
+    .reaction-pop { animation: reaction-pop 220ms ease-out; }
+    
+    /* ========== CARD STYLES ========== */
+    
+    .idea-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .idea-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.idea-card:hover::before {
+    left: 100%;
+}
+
+.idea-card > * {
+    position: relative;
+    z-index: 1;
+}
+    
+    .idea-card:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        border-color: rgb(59, 130, 246);
+    }
+    
+    .chain-card {
+        transition: all 0.3s ease;
+        animation: fadeIn 0.5s ease;
+    }
+    
+    .chain-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(16, 185, 129, 0.15);
+    }
+    
+    .btn-primary {
+        transition: all 0.2s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.btn-primary > * {
+    position: relative;
+    z-index: 1;
+}
+    
+    .btn-primary:hover::after {
+        width: 300px;
+        height: 300px;
+    }
+    
+    .btn-primary:hover {
+        transform: scale(1.05);
+        box-shadow: 0 8px 16px rgba(59, 130, 246, 0.4);
+    }
+    
+    .btn-primary:active {
+        transform: scale(0.95);
+    }
+    
+    .modal-backdrop {
+        animation: fadeIn 0.3s ease;
+    }
+    
+    .modal-content {
+        animation: slideInUp 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .progress-bar {
+        transition: width 0.5s ease;
+    }
+    
+    .notification-active {
+        animation: shake 0.5s ease;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .spinner {
+        animation: spin 1s linear infinite;
+    }
+    
+    /* ========== DARK MODE ========== */
+    
+    body.dark-mode {
+        background: linear-gradient(to bottom right, #0f172a, #1e293b, #334155) !important;
+    }
+    .dark-mode body { color: #e2e8f0 !important; }
+    .dark-mode .text-black { color: #e2e8f0 !important; }
+    
+    .dark-mode .bg-white {
+        background-color: #1e293b !important;
+    }
+    
+    .dark-mode .text-slate-800 {
+        color: #e2e8f0 !important;
+    }
+    
+    .dark-mode .text-slate-700 {
+        color: #cbd5e1 !important;
+    }
+    
+    .dark-mode .text-slate-600 {
+        color: #94a3b8 !important;
+    }
+    
+    .dark-mode .text-slate-500 {
+        color: #64748b !important;
+    }
+    
+    .dark-mode .border-slate-200 {
+        border-color: #334155 !important;
+    }
+    
+    .dark-mode .border-slate-300 {
+        border-color: #475569 !important;
+    }
+    
+    .dark-mode .bg-slate-50 {
+        background-color: #334155 !important;
+    }
+    
+    .dark-mode .bg-slate-100 {
+        background-color: #475569 !important;
+    }
+    
+    .dark-mode .hover\:bg-slate-50:hover {
+        background-color: #334155 !important;
+    }
+    
+    .dark-mode .hover\:bg-slate-100:hover {
+        background-color: #475569 !important;
+    }
+    
+    .dark-mode .hover\:bg-slate-200:hover {
+        background-color: #64748b !important;
+    }
+    /* Contribution Queue progress bar background (dark-mode aware) */
+    .queue-progress-bg { background-color: #e2e8f0; }
+    .dark-mode .queue-progress-bg { background-color: #475569 !important; }
+    
+    .dark-mode-toggle {
+        transition: all 0.3s ease;
+    }
+    
+    .fade-in {
+        animation: fadeIn 0.6s ease;
+    }
+    
+    .stagger-item {
+    animation: fadeIn 0.5s ease;
+    animation-fill-mode: forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0s; }
+.stagger-item:nth-child(2) { animation-delay: 0.05s; }
+.stagger-item:nth-child(3) { animation-delay: 0.1s; }
+.stagger-item:nth-child(4) { animation-delay: 0.15s; }
+.stagger-item:nth-child(5) { animation-delay: 0.2s; }
+</style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-[var(--cs-bg-light)] via-[color-mix(in_srgb,var(--cs-accent)_6%,var(--cs-bg-light))] to-[var(--cs-bg-light)]">
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-white border px-3 py-2 rounded">Skip to content</a>
+    <div id="app"></div>
+    <div id="sr-live" class="sr-only" aria-live="polite"></div>
+    <div id="error-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); color:#fff; z-index:99999;">
+        <div style="max-width:900px; margin:40px auto; background:#111827; border:2px solid #ef4444; border-radius:12px; padding:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong>Runtime error</strong>
+                <button onclick="document.getElementById('error-overlay').style.display='none'" style="background:#374151; color:#fff; border:none; border-radius:6px; padding:6px 10px; cursor:pointer;">Close</button>
+            </div>
+            <pre id="error-overlay-msg" style="white-space:pre-wrap; margin-top:8px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"></pre>
+        </div>
+    </div>
+
+    <script>
+        // ===================================
+        // FIREBASE CONFIGURATION
+        // ===================================
+        // TODO: Replace with your Firebase config
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase (or fallback to localStorage when not configured)
+        const useFirebase = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('YOUR'));
+        let db = null;
+        let auth = null;
+
+        if (useFirebase) {
+            // Initialize Firebase
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+        } else {
+            console.warn('Firebase config not set — running in local-only mode using localStorage. Replace firebaseConfig with your project config to enable Firebase.');
+        }
+
+        // Local storage helpers for fallback mode
+        function _readLocal(key) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function _writeLocal(key, value) {
+            localStorage.setItem(key, JSON.stringify(value));
+        }
+
+        // ===================================
+        // FIREBASE FUNCTIONS
+        // ===================================
+        
+        // Load all data (Firebase or localStorage fallback)
+        async function loadDataFromFirebase() {
+            try {
+                if (useFirebase && db) {
+                    // Load ideas
+                    const ideasSnapshot = await db.collection('ideas').orderBy('timestamp', 'desc').get();
+                    state.ideas = ideasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // Load incomplete chains
+                    const chainsSnapshot = await db.collection('incompleteChains').orderBy('timestamp', 'desc').get();
+                    state.incompleteChains = chainsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // Load users
+                    const usersSnapshot = await db.collection('users').get();
+                    state.allUsers = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    // Load notifications for current user
+                    if (state.currentUser) {
+                        const notifsSnapshot = await db.collection('notifications')
+                            .where('userId', '==', state.currentUser.id)
+                            .orderBy('timestamp', 'desc')
+                            .limit(20)
+                            .get();
+                        state.notifications = notifsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    }
+                } else {
+                    // Local fallback
+                    state.ideas = _readLocal('cs_ideas');
+                    state.incompleteChains = _readLocal('cs_incompleteChains');
+                    state.allUsers = _readLocal('cs_users');
+                    if (state.currentUser) {
+                        const allNotifs = _readLocal('cs_notifications');
+                        state.notifications = allNotifs.filter(n => n.userId === state.currentUser.id).sort((a,b) => b.timestamp - a.timestamp).slice(0,20);
+                    }
+                }
+
+                render();
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+
+        // Save idea (Firebase or local)
+        async function saveIdeaToFirebase(idea) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('ideas').doc(idea.id.toString()).set(idea);
+                } else {
+                    const ideas = _readLocal('cs_ideas');
+                    const idx = ideas.findIndex(i => i.id === idea.id);
+                    if (idx >= 0) ideas[idx] = idea; else ideas.unshift(idea);
+                    _writeLocal('cs_ideas', ideas);
+                }
+            } catch (error) {
+                console.error('Error saving idea:', error);
+            }
+        }
+
+        // Save incomplete chain
+        async function saveChainToFirebase(chain) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('incompleteChains').doc(chain.id.toString()).set(chain);
+                } else {
+                    const chains = _readLocal('cs_incompleteChains');
+                    const idx = chains.findIndex(c => c.id === chain.id);
+                    if (idx >= 0) chains[idx] = chain; else chains.unshift(chain);
+                    _writeLocal('cs_incompleteChains', chains);
+                }
+            } catch (error) {
+                console.error('Error saving chain:', error);
+            }
+        }
+
+        // Delete chain
+        async function deleteChainFromFirebase(chainId) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('incompleteChains').doc(chainId.toString()).delete();
+                } else {
+                    const chains = _readLocal('cs_incompleteChains').filter(c => c.id !== chainId);
+                    _writeLocal('cs_incompleteChains', chains);
+                }
+            } catch (error) {
+                console.error('Error deleting chain:', error);
+            }
+        }
+
+        // Update idea
+        async function updateIdeaInFirebase(idea) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('ideas').doc(idea.id.toString()).update(idea);
+                } else {
+                    const ideas = _readLocal('cs_ideas');
+                    const idx = ideas.findIndex(i => i.id === idea.id);
+                    if (idx >= 0) ideas[idx] = idea;
+                    _writeLocal('cs_ideas', ideas);
+                }
+            } catch (error) {
+                console.error('Error updating idea:', error);
+            }
+        }
+
+        // Delete idea
+        async function deleteIdeaFromFirebase(ideaId) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('ideas').doc(ideaId.toString()).delete();
+                } else {
+                    const ideas = _readLocal('cs_ideas').filter(i => i.id !== ideaId);
+                    _writeLocal('cs_ideas', ideas);
+                }
+            } catch (error) {
+                console.error('Error deleting idea:', error);
+            }
+        }
+
+        // Save user
+        async function saveUserToFirebase(user) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('users').doc(user.id).set(user);
+                } else {
+                    const users = _readLocal('cs_users');
+                    const idx = users.findIndex(u => u.id === user.id);
+                    if (idx >= 0) users[idx] = user; else users.unshift(user);
+                    _writeLocal('cs_users', users);
+                }
+            } catch (error) {
+                console.error('Error saving user:', error);
+            }
+        }
+
+        // Save notification
+        async function saveNotificationToFirebase(notification, userId) {
+            try {
+                if (useFirebase && db) {
+                    await db.collection('notifications').add({
+                        ...notification,
+                        userId: userId
+                    });
+
+        // Global error handlers
+        window.addEventListener('error', (e) => {
+            const eo = document.getElementById('error-overlay');
+            const em = document.getElementById('error-overlay-msg');
+            if (eo && em) {
+                em.textContent = (e.message || 'Unknown error') + (e.filename? `\n${e.filename}:${e.lineno}:${e.colno}`:'');
+                eo.style.display = 'block';
+            }
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            const eo = document.getElementById('error-overlay');
+            const em = document.getElementById('error-overlay-msg');
+            if (eo && em) {
+                em.textContent = 'Unhandled promise rejection: ' + (e.reason && (e.reason.stack || e.reason) || 'Unknown');
+                eo.style.display = 'block';
+            }
+        });
+                } else {
+                    const notifs = _readLocal('cs_notifications');
+                    notifs.unshift({...notification, userId});
+                    _writeLocal('cs_notifications', notifs);
+                }
+            } catch (error) {
+                console.error('Error saving notification:', error);
+            }
+        }
+
+        // Clear notifications for user
+        async function clearNotificationsInFirebase(userId) {
+            try {
+                if (useFirebase && db) {
+                    const snapshot = await db.collection('notifications')
+                        .where('userId', '==', userId)
+                        .get();
+                    
+                    const batch = db.batch();
+                    snapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                } else {
+                    const notifs = _readLocal('cs_notifications').filter(n => n.userId !== userId);
+                    _writeLocal('cs_notifications', notifs);
+                }
+            } catch (error) {
+                console.error('Error clearing notifications:', error);
+            }
+        }
+
+        // ===================================
+        // LUCIDE ICONS
+        // ===================================
+        const icons = {
+            Sparkles: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>`,
+            Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            Bell: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`,
+            User: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+            ThumbsUp: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>`,
+            ThumbsDown: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z"/></svg>`,
+            MessageCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>`,
+            Clock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+            TrendingUp: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+            Flame: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`,
+            BarChart3: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,
+            Users: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+            Activity: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
+            Target: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+            Shield: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+            Zap: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`
+        };
+
+        function getIcon(name, size = 24, className = '') {
+            const svg = icons[name];
+            return svg.replace('width="24" height="24"', `width="${size}" height="${size}" class="${className}"`);
+        }
+
+        // ===================================
+        // STATE MANAGEMENT
+        // ===================================
+        let state = {
+    currentUser: null,
+    showAuth: false,
+    activeTab: 'wall',
+    ideas: [],
+    incompleteChains: [],
+    showSparkModal: false,
+    showContributeModal: false,
+    selectedChain: null,
+    selectedIdea: null,
+    sortBy: 'newest',
+    notifications: [],
+    allUsers: [],
+    showNotifications: false,
+    showUserMenu: false,
+    showEditProfile: false,
+    darkMode: false
+};
+
+        function isAdmin() {
+            return state.currentUser?.role === 'admin';
+        }
+
+        // Helper: find user by id
+        function getUserById(id) {
+            if (!id) return null;
+            return state.allUsers.find(u => u.id === id) || null;
+        }
+
+        // Save profile changes
+        async function handleSaveProfile(updated) {
+            if (!state.currentUser) return;
+            const merged = { ...state.currentUser, ...updated };
+            await saveUserToFirebase(merged);
+            // update local state users list
+            const idx = state.allUsers.findIndex(u => u.id === merged.id);
+            if (idx >= 0) state.allUsers[idx] = merged; else state.allUsers.unshift(merged);
+            state.currentUser = merged;
+            state.showEditProfile = false;
+            render();
+        }
+
+        // Resize image to a max dimension and return data URL
+        async function resizeImageToDataUrl(file, maxSize = 256) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                const reader = new FileReader();
+                reader.onload = e => { img.src = e.target.result; };
+                reader.onerror = reject;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let { width, height } = img;
+                    const scale = Math.min(1, maxSize / Math.max(width, height));
+                    width = Math.round(width * scale);
+                    height = Math.round(height * scale);
+                    canvas.width = width; canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.85));
+                };
+                img.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+        function toggleDarkMode() {
+    state.darkMode = !state.darkMode;
+    document.body.classList.toggle('dark-mode', state.darkMode);
+    localStorage.setItem('chainspark_darkMode', state.darkMode);
+    render();
+}
+        // Apply saved dark mode on load
+        (function initDarkModeFromStorage(){
+            try {
+                const saved = localStorage.getItem('chainspark_darkMode');
+                if (saved !== null) {
+                    state.darkMode = saved === 'true';
+                    document.body.classList.toggle('dark-mode', state.darkMode);
+                }
+            } catch (e) { /* ignore */ }
+        })();
+
+function showConfetti() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return;
+    }
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+    const confettiCount = 50;
+    
+    for (let i = 0; i < confettiCount; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.position = 'fixed';
+        confetti.style.width = '10px';
+        confetti.style.height = '10px';
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.top = '100%';
+        confetti.style.opacity = '1';
+        confetti.style.pointerEvents = 'none';
+        confetti.style.zIndex = '9999';
+        confetti.style.borderRadius = '50%';
+        confetti.style.animation = `confetti ${Math.random() * 2 + 2}s ease-out forwards`;
+        
+        document.body.appendChild(confetti);
+        
+        setTimeout(() => {
+            confetti.remove();
+        }, 4000);
+    }
+}
+        // Accessible announcements for screen readers
+        function announce(message) {
+            const el = document.getElementById('sr-live');
+            if (!el) return;
+            el.textContent = '';
+            // small delay to ensure change is detected
+            setTimeout(() => { el.textContent = message; }, 10);
+        }
+
+        // Basic HTML escaping for user-provided content
+        function escapeHtml(s) {
+            if (typeof s !== 'string') return s;
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return s.replace(/[&<>"']/g, c => map[c]);
+        }
+
+        function getAnalytics() {
+            const totalIdeas = state.ideas.length;
+            const totalChains = state.incompleteChains.length;
+            const totalUsers = state.allUsers.length;
+            const totalFragments = state.ideas.reduce((acc, idea) => acc + idea.fragments.length, 0) + 
+                                  state.incompleteChains.reduce((acc, chain) => acc + chain.fragments.length, 0);
+            const totalEngagements = state.ideas.reduce((acc, idea) => acc + (idea.likes||0) + (idea.dislikes||0) + (idea.comments||0), 0);
+            const activeUsers = state.allUsers.filter(u => u.joinedAt > Date.now() - 86400000 * 7).length;
+            const completionRate = (totalIdeas + totalChains) > 0 ? Math.round((totalIdeas / (totalIdeas + totalChains)) * 100) : 0;
+            const avgFragmentsPerIdea = totalIdeas > 0 ? Math.round((state.ideas.reduce((a,i)=>a+i.fragments.length,0) / totalIdeas) * 10) / 10 : 0;
+            const topContributors = (() => {
+                const map = new Map();
+                state.ideas.forEach(idea => idea.fragments.forEach(f => map.set(f.userId, (map.get(f.userId)||0)+1)));
+                state.incompleteChains.forEach(chain => chain.fragments.forEach(f => map.set(f.userId, (map.get(f.userId)||0)+1)));
+                return [...map.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([uid,count])=>({uid,count}));
+            })();
+            
+            return {
+                totalIdeas,
+                totalChains,
+                totalUsers,
+                totalFragments,
+                totalEngagements,
+                activeUsers,
+                completionRate,
+                avgFragmentsPerIdea,
+                topContributors,
+                totalViews: state.ideas.reduce((acc, idea) => acc + (idea.views||0), 0)
+            };
+        }
+
+        // ===================================
+        // EVENT HANDLERS
+        // ===================================
+        
+        function handleLogout() {
+            state.currentUser = null;
+            state.activeTab = 'wall';
+            state.showNotifications = false;
+            state.showUserMenu = false;
+            state.showSparkModal = false;
+            state.showContributeModal = false;
+            state.selectedIdea = null;
+            state.selectedChain = null;
+            state.notifications = [];
+            try { localStorage.removeItem('cs_currentUserId'); } catch (e) {}
+            render();
+        }
+
+        async function handleEmailSignup(name, email) {
+            if (email.trim() && name.trim()) {
+                const safeName = escapeHtml(name.trim());
+                const safeEmail = escapeHtml(email.trim());
+                const emailLower = safeEmail.toLowerCase();
+                // Check if admin email
+                if (emailLower === 'admin@chainspark.com') {
+                    // Firebase mode
+                    if (useFirebase && db) {
+                        try {
+                            const adminSnapshot = await db.collection('users').doc('admin').get();
+                            if (adminSnapshot.exists) {
+                                state.currentUser = { id: 'admin', ...adminSnapshot.data() };
+                            } else {
+                                const adminUser = {
+                                    id: 'admin',
+                                    name: 'Admin',
+                                    email: 'admin@chainspark.com',
+                                    role: 'admin',
+                                    joinedAt: Date.now(),
+                                    bio: 'Platform administrator',
+                                    avatarUrl: ''
+                                };
+                                await saveUserToFirebase(adminUser);
+                                state.currentUser = adminUser;
+                            }
+                        } catch (e) {
+                            console.error('Error accessing Firebase for admin:', e);
+                        }
+                    } else {
+                        // Local fallback: check local users
+                        const users = _readLocal('cs_users');
+                        let adminUser = users.find(u => u.id === 'admin' || (u.email && u.email.toLowerCase() === 'admin@chainspark.com'));
+                        if (adminUser) {
+                            state.currentUser = adminUser;
+                        } else {
+                            adminUser = {
+                                    id: 'admin',
+                                    name: 'Admin',
+                                    email: 'admin@chainspark.com',
+                                    role: 'admin',
+                                    joinedAt: Date.now(),
+                                    bio: 'Platform administrator',
+                                    avatarUrl: ''
+                                };
+                            await saveUserToFirebase(adminUser);
+                            state.currentUser = adminUser;
+                        }
+                    }
+
+                    const notif = { 
+                        id: Date.now(), 
+                        message: 'Welcome back, Admin! You have full platform access.', 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, state.currentUser.id);
+                } else {
+                    // Regular user
+                    const newUser = {
+                        id: `user-${Date.now()}`,
+                        name: safeName,
+                        email: safeEmail,
+                        role: 'user',
+                        joinedAt: Date.now(),
+                        bio: '',
+                        avatarUrl: ''
+                    };
+                    await saveUserToFirebase(newUser);
+                    state.currentUser = newUser;
+                    try { localStorage.setItem('cs_currentUserId', newUser.id); } catch (e) {}
+                    
+                    const notif = { 
+                        id: Date.now(), 
+                        message: `Welcome to ChainSpark, ${safeName}! Start creating sparks.`, 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, newUser.id);
+                    announce(notif.message);
+                }
+                
+                state.showAuth = false;
+                await loadDataFromFirebase();
+            }
+        }
+
+        async function handleStartSpark(text) {
+            if (text.trim() && text.length <= 100) {
+                const safeText = escapeHtml(text.trim());
+                const newChain = {
+                    id: Date.now(),
+                    fragments: [{ text: safeText, userId: state.currentUser.id, userName: state.currentUser.name, createdAt: Date.now() }],
+                    contributedBy: [state.currentUser.id],
+                    timestamp: Date.now()
+                };
+                
+                state.incompleteChains.unshift(newChain);
+                await saveChainToFirebase(newChain);
+                
+                state.showSparkModal = false;
+                state.activeTab = 'queue';
+                
+                const notif = { 
+                    id: Date.now(), 
+                    message: 'Your spark has been created! Waiting for others to contribute.', 
+                    timestamp: Date.now() 
+                };
+                state.notifications.unshift(notif);
+                await saveNotificationToFirebase(notif, state.currentUser.id);
+                announce(notif.message);
+                announce(notif.message);
+                
+                render();
+            }
+        }
+
+        async function handleContribute(text) {
+            if (text.trim() && text.length <= 100 && state.selectedChain) {
+                const updatedFragments = [...state.selectedChain.fragments, { 
+                    text: escapeHtml(text.trim()), 
+                    userId: state.currentUser.id, 
+                    userName: state.currentUser.name,
+                    createdAt: Date.now()
+                }];
+                
+                if (updatedFragments.length === 5) {
+    // 🎉 Celebrate with confetti!
+    showConfetti();
+    
+    // Chain is complete - move to ideas
+    const newIdea = {
+                        id: state.selectedChain.id,
+                        fragments: updatedFragments,
+                        likes: 0,
+                        dislikes: 0,
+                        comments: 0,
+                        timestamp: Date.now(),
+                        likedBy: [],
+                        dislikedBy: [],
+                        views: 0
+                    };
+                    
+                    state.ideas.unshift(newIdea);
+                    await saveIdeaToFirebase(newIdea);
+                    
+                    state.incompleteChains = state.incompleteChains.filter(c => c.id !== state.selectedChain.id);
+                    await deleteChainFromFirebase(state.selectedChain.id);
+                    
+                const notif = { 
+                        id: Date.now(), 
+                        message: '🎉 Your chain is complete! Check it out on the Idea Wall.', 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, state.currentUser.id);
+                announce(notif.message);
+                    announce(notif.message);
+                } else {
+                    // Update chain
+                    const updatedChain = {
+                        ...state.selectedChain,
+                        fragments: updatedFragments,
+                        contributedBy: [...state.selectedChain.contributedBy, state.currentUser.id]
+                    };
+                    
+                    state.incompleteChains = state.incompleteChains.map(c => 
+                        c.id === state.selectedChain.id ? updatedChain : c
+                    );
+                    await saveChainToFirebase(updatedChain);
+                    
+                    const notif = { 
+                        id: Date.now(), 
+                        message: `Contribution added! Chain is now ${updatedFragments.length}/5 complete.`, 
+                        timestamp: Date.now() 
+                    };
+                    state.notifications.unshift(notif);
+                    await saveNotificationToFirebase(notif, state.currentUser.id);
+                    announce(notif.message);
+                }
+                
+                state.showContributeModal = false;
+                state.selectedChain = null;
+                render();
+            }
+        }
+
+        async function handleLike(ev) {
+            if (state.currentUser && state.selectedIdea && !state.selectedIdea.likedBy.includes(state.currentUser.id)) {
+                const updatedIdea = {
+                    ...state.selectedIdea,
+                    likes: state.selectedIdea.likes + 1,
+                    likedBy: [...state.selectedIdea.likedBy, state.currentUser.id],
+                    dislikes: state.selectedIdea.dislikedBy.includes(state.currentUser.id) 
+                        ? state.selectedIdea.dislikes - 1 
+                        : state.selectedIdea.dislikes,
+                    dislikedBy: state.selectedIdea.dislikedBy.filter(id => id !== state.currentUser.id)
+                };
+                
+                state.ideas = state.ideas.map(i => i.id === state.selectedIdea.id ? updatedIdea : i);
+                state.selectedIdea = updatedIdea;
+                
+                await updateIdeaInFirebase(updatedIdea);
+                render();
+            }
+        }
+
+        // Open idea detail, increment views once per open
+        async function openIdea(id) {
+            const idea = state.ideas.find(i => i.id === id);
+            if (!idea) return;
+            const updated = { ...idea, views: (idea.views || 0) + 1 };
+            state.ideas = state.ideas.map(i => i.id === id ? updated : i);
+            state.selectedIdea = updated;
+            await updateIdeaInFirebase(updated);
+            render();
+        }
+
+        async function handleDislike(ev) {
+            if (state.currentUser && state.selectedIdea && !state.selectedIdea.dislikedBy.includes(state.currentUser.id)) {
+                const updatedIdea = {
+                    ...state.selectedIdea,
+                    dislikes: state.selectedIdea.dislikes + 1,
+                    dislikedBy: [...state.selectedIdea.dislikedBy, state.currentUser.id],
+                    likes: state.selectedIdea.likedBy.includes(state.currentUser.id) 
+                        ? state.selectedIdea.likes - 1 
+                        : state.selectedIdea.likes,
+                    likedBy: state.selectedIdea.likedBy.filter(id => id !== state.currentUser.id)
+                };
+                
+                state.ideas = state.ideas.map(i => i.id === state.selectedIdea.id ? updatedIdea : i);
+                state.selectedIdea = updatedIdea;
+                
+                await updateIdeaInFirebase(updatedIdea);
+                render();
+            }
+        }
+
+        async function handleDeleteIdea() {
+            if (confirm('Are you sure you want to delete this idea? This action cannot be undone.')) {
+                await deleteIdeaFromFirebase(state.selectedIdea.id);
+                state.ideas = state.ideas.filter(i => i.id !== state.selectedIdea.id);
+                state.selectedIdea = null;
+                
+                const notif = { 
+                    id: Date.now(), 
+                    message: 'Idea deleted successfully.', 
+                    timestamp: Date.now() 
+                };
+                state.notifications.unshift(notif);
+                await saveNotificationToFirebase(notif, state.currentUser.id);
+                
+                render();
+            }
+        }
+
+        async function clearAllNotifications() {
+            if (state.currentUser) {
+                await clearNotificationsInFirebase(state.currentUser.id);
+                state.notifications = [];
+                render();
+            }
+        }
+        async function handleToggleLikeOnCard(ideaId, ev){
+            if (!state.currentUser) { state.showAuth = true; render(); return; }
+            const idea = state.ideas.find(i=>i.id===ideaId);
+            if (!idea) return;
+            const hasLiked = idea.likedBy.includes(state.currentUser.id);
+            const hasDisliked = idea.dislikedBy.includes(state.currentUser.id);
+            const updated = {
+                ...idea,
+                likes: Math.max(0, idea.likes + (hasLiked ? -1 : 1)),
+                likedBy: hasLiked ? idea.likedBy.filter(id=>id!==state.currentUser.id) : [...idea.likedBy, state.currentUser.id],
+                dislikes: hasDisliked ? Math.max(0, idea.dislikes - 1) : idea.dislikes,
+                dislikedBy: hasDisliked ? idea.dislikedBy.filter(id=>id!==state.currentUser.id) : idea.dislikedBy
+            };
+            state.ideas = state.ideas.map(i=>i.id===ideaId?updated:i);
+            await updateIdeaInFirebase(updated);
+            render();
+        }
+        async function handleToggleDislikeOnCard(ideaId, ev){
+            if (!state.currentUser) { state.showAuth = true; render(); return; }
+            const idea = state.ideas.find(i=>i.id===ideaId);
+            if (!idea) return;
+            const hasDisliked = idea.dislikedBy.includes(state.currentUser.id);
+            const hasLiked = idea.likedBy.includes(state.currentUser.id);
+            const updated = {
+                ...idea,
+                dislikes: Math.max(0, idea.dislikes + (hasDisliked ? -1 : 1)),
+                dislikedBy: hasDisliked ? idea.dislikedBy.filter(id=>id!==state.currentUser.id) : [...idea.dislikedBy, state.currentUser.id],
+                likes: hasLiked ? Math.max(0, idea.likes - 1) : idea.likes,
+                likedBy: hasLiked ? idea.likedBy.filter(id=>id!==state.currentUser.id) : idea.likedBy
+            };
+            state.ideas = state.ideas.map(i=>i.id===ideaId?updated:i);
+            await updateIdeaInFirebase(updated);
+            render();
+        }
+        async function handleLikeComment(idx, ev){
+            if (!state.currentUser || !state.selectedIdea) return;
+            const cl = [...(state.selectedIdea.commentList||[])];
+            const c = { ...(cl[idx]||{}) };
+            if (!c) return;
+            c.likedBy = c.likedBy||[]; c.dislikedBy = c.dislikedBy||[];
+            const hasLiked = c.likedBy.includes(state.currentUser.id);
+            const hasDisliked = c.dislikedBy.includes(state.currentUser.id);
+            c.likes = (c.likes||0) + (hasLiked? -1: 1);
+            c.likedBy = hasLiked ? c.likedBy.filter(id=>id!==state.currentUser.id) : [...c.likedBy, state.currentUser.id];
+            if (hasDisliked){ c.dislikes = Math.max(0,(c.dislikes||0)-1); c.dislikedBy = c.dislikedBy.filter(id=>id!==state.currentUser.id); }
+            cl[idx]=c;
+            const updatedIdea = { ...state.selectedIdea, commentList: cl };
+            state.ideas = state.ideas.map(i=>i.id===updatedIdea.id?updatedIdea:i);
+            state.selectedIdea = updatedIdea;
+            await updateIdeaInFirebase(updatedIdea);
+            render();
+        }
+        async function handleDislikeComment(idx, ev){
+            if (!state.currentUser || !state.selectedIdea) return;
+            const cl = [...(state.selectedIdea.commentList||[])];
+            const c = { ...(cl[idx]||{}) };
+            if (!c) return;
+            c.likedBy = c.likedBy||[]; c.dislikedBy = c.dislikedBy||[];
+            const hasDisliked = c.dislikedBy.includes(state.currentUser.id);
+            const hasLiked = c.likedBy.includes(state.currentUser.id);
+            c.dislikes = (c.dislikes||0) + (hasDisliked? -1: 1);
+            c.dislikedBy = hasDisliked ? c.dislikedBy.filter(id=>id!==state.currentUser.id) : [...c.dislikedBy, state.currentUser.id];
+            if (hasLiked){ c.likes = Math.max(0,(c.likes||0)-1); c.likedBy = c.likedBy.filter(id=>id!==state.currentUser.id); }
+            cl[idx]=c;
+            const updatedIdea = { ...state.selectedIdea, commentList: cl };
+            state.ideas = state.ideas.map(i=>i.id===updatedIdea.id?updatedIdea:i);
+            state.selectedIdea = updatedIdea;
+            await updateIdeaInFirebase(updatedIdea);
+            render();
+        }
+        async function handleDeleteComment(idx){
+            if (!isAdmin() || !state.selectedIdea) return;
+            const cl = [...(state.selectedIdea.commentList||[])];
+            cl.splice(idx,1);
+            const updatedIdea = { ...state.selectedIdea, commentList: cl, comments: Math.max(0,(state.selectedIdea.comments||0)-1) };
+            state.ideas = state.ideas.map(i=>i.id===updatedIdea.id?updatedIdea:i);
+            state.selectedIdea = updatedIdea;
+            await updateIdeaInFirebase(updatedIdea);
+            render();
+        }
+        
+
+        // ===================================
+        // RENDER FUNCTIONS
+        // ===================================
+
+        function renderHeader() {
+            return `
+                <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+                    <div class="max-w-7xl mx-auto px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3 ${state.currentUser ? 'cursor-pointer' : ''}" onclick="${state.currentUser ? 'state.activeTab = \'wall\'; render();' : ''}">
+                                <img alt="ChainSpark" src="FullLogo-02.svg" class="header-logo-light w-auto" style="height:2.4rem;" />
+                                <img alt="ChainSpark" src="Fulllogo_dark-05.svg" class="header-logo-dark w-auto" style="height:2.4rem;" />
+                                ${isAdmin() ? `
+                                    <span class="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs px-3 py-1 rounded-full font-semibold flex items-center gap-1">
+                                        ${getIcon('Shield', 12)}
+                                        ADMIN
+                                    </span>
+                                ` : ''}
+                            </div>
+                            <div class="flex items-center gap-3">
+                                ${state.currentUser ? `
+                                    <button onclick="state.showSparkModal = true; render();" class="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm btn-primary">
+    ${getIcon('Plus', 20)}
+    <span class="hidden sm:inline">Start a Spark</span>
+</button>
+<button onclick="toggleDarkMode();" class="p-2 hover:bg-slate-100 rounded-full transition dark-mode-toggle" title="Toggle Dark Mode" aria-label="Toggle dark mode">
+    <div class="text-slate-600">
+        ${state.darkMode ? 
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>' : 
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+        }
+    </div>
+</button>
+                                    <div class="relative">
+                                        <button onclick="state.showNotifications = !state.showNotifications; render();" class="relative p-2 hover:bg-slate-100 rounded-full transition" aria-label="Notifications">
+                                            <div class="text-slate-600">${getIcon('Bell', 24)}</div>
+                                            ${state.notifications.length > 0 ? '<span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>' : ''}
+                                        </button>
+                                        ${state.showNotifications ? `
+                                            <div class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border-2 border-slate-200 p-4 z-50 max-h-96 overflow-y-auto">
+                                                <div class="flex items-center justify-between mb-3">
+                                                    <h3 class="font-bold text-slate-800">Notifications</h3>
+                                                    ${state.notifications.length > 0 ? `
+                                                        <button onclick="clearAllNotifications();" class="text-xs text-blue-600 hover:text-blue-700">Clear all</button>
+                                                    ` : ''}
+                                                </div>
+                                                ${state.notifications.length > 0 ? `
+                                                    <div class="space-y-2">
+                                                        ${state.notifications.map(notif => `
+                                                            <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+                                                                <p class="text-slate-800">${notif.message}</p>
+                                                                <p class="text-xs text-slate-500 mt-1">${new Date(notif.timestamp).toLocaleTimeString()}</p>
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                ` : '<p class="text-slate-500 text-sm text-center py-4">No new notifications</p>'}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                    <div class="relative">
+                                        <button onclick="state.showUserMenu = !state.showUserMenu; render();" class="flex items-center gap-2 hover:bg-slate-100 rounded-full p-2 transition">
+                                            ${state.currentUser.avatarUrl ? `
+                                                <img alt="avatar" src="${state.currentUser.avatarUrl}" class="w-8 h-8 rounded-full object-cover" />
+                                            ` : `
+                                                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">${state.currentUser.name[0]}</div>
+                                            `}
+                                        </button>
+                                        ${state.showUserMenu ? `
+                                            <div class="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-slate-200 overflow-hidden z-50">
+                                                <div class="p-4 border-b border-slate-200 bg-slate-50"> <p class="font-semibold text-slate-800">${state.currentUser.name}</p>
+                                                    <p class="text-xs text-slate-600 mt-1">${state.currentUser.email}</p>
+                                                </div>
+                                                <button onclick="state.activeTab = 'profile'; state.showUserMenu = false; render();" class="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2">
+                                                    ${getIcon('User', 16)}
+                                                    View Profile
+                                                </button>
+                                                ${isAdmin() ? `
+                                                    <button onclick="state.activeTab = 'analytics'; state.showUserMenu = false; render();" class="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition flex items-center gap-2">
+                                                        ${getIcon('BarChart3', 16)}
+                                                        Analytics Dashboard
+                                                    </button>
+                                                ` : ''}
+                                                <button onclick="handleLogout();" class="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition border-t border-slate-200 flex items-center gap-2 font-semibold">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                                    </svg>
+                                                    Log Out
+                                                </button>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                ` : `
+                                    <button onclick="state.showAuth = true; render();" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                        Sign In
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </header>
+            `;
+        }
+
+        function renderAuthModal() {
+            if (!state.showAuth) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl modal-content">
+                        <h2 id="auth-modal-title" class="text-3xl font-bold mb-2 text-slate-800">Welcome to ChainSpark</h2>
+                        <p class="text-slate-600 mb-6">Co-create ideas, one spark at a time</p>
+                        <div class="space-y-3">
+                            <input type="text" id="signup-name" placeholder="Your name" class="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                            <input type="email" id="signup-email" placeholder="Enter your email" class="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                            <button onclick="
+    const name = document.getElementById('signup-name').value;
+    const email = document.getElementById('signup-email').value;
+    handleEmailSignup(name, email);
+" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm btn-primary">
+                                Create Account
+                            </button>
+                        </div>
+                        <button onclick="state.showAuth = false; render();" class="mt-4 text-slate-500 hover:text-slate-700 text-sm w-full">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderStartSparkModal() {
+            if (!state.showSparkModal) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="spark-modal-title">
+    <div class="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl modal-content">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-amber-500">${getIcon('Sparkles', 28)}</div>
+                            <h2 id="spark-modal-title" class="text-2xl font-bold text-slate-800">Start a Spark</h2>
+                        </div>
+                        <p class="text-slate-600 mb-4">Begin an idea with a short fragment. Four others will continue it!</p>
+                        <textarea id="spark-text" placeholder="What if technology could..." maxlength="100" class="w-full border-2 border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-32"></textarea>
+                        <div class="flex justify-between items-center mt-2 mb-6">
+                            <span id="spark-char-count" class="text-sm text-slate-500">0/100 characters</span>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="state.showSparkModal = false; render();" class="flex-1 px-6 py-3 border-2 border-slate-300 rounded-lg font-semibold hover:bg-slate-50 transition">Cancel</button>
+                            <button onclick="
+                                const text = document.getElementById('spark-text').value;
+                                handleStartSpark(text);
+                            " class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm btn-primary">Spark It</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderContributeModal() {
+            if (!state.showContributeModal || !state.selectedChain) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="contribute-modal-title">
+    <div class="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl modal-content">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="text-emerald-500">${getIcon('Plus', 28)}</div>
+                            <h2 id="contribute-modal-title" class="text-2xl font-bold text-slate-800">Add Your Spark</h2>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-4 mb-4 max-h-48 overflow-y-auto border border-slate-200">
+                            <p class="text-sm text-slate-600 mb-2">Current chain:</p>
+                            ${state.selectedChain.fragments.map((frag, idx) => `
+                                <p class="text-slate-800 mb-2"><span class="font-semibold">${idx + 1}.</span> ${frag.text}</p>
+                            `).join('')}
+                            <p class="text-slate-400 italic">${state.selectedChain.fragments.length}/5 - Add fragment ${state.selectedChain.fragments.length + 1}...</p>
+                        </div>
+                        <textarea id="contribute-text" placeholder="Continue the idea..." maxlength="100" class="w-full border-2 border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none h-32"></textarea>
+                        <div class="flex justify-between items-center mt-2 mb-6">
+                            <span id="contribute-char-count" class="text-sm text-slate-500">0/100 characters</span>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="state.showContributeModal = false; state.selectedChain = null; render();" class="flex-1 px-6 py-3 border-2 border-slate-300 rounded-lg font-semibold hover:bg-slate-50 transition">Cancel</button>
+                            <button onclick="
+                                const text = document.getElementById('contribute-text').value;
+                                handleContribute(text);
+" class="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition shadow-sm btn-primary">Contribute</button>                    </div>
+                </div>
+            `;
+        }
+
+        function renderIdeaDetailModal() {
+            if (!state.selectedIdea) return '';
+            
+            return `
+                <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title">
+    <div class="bg-white rounded-2xl p-8 max-w-5xl w-full my-8 shadow-2xl modal-content">
+                        <div class="lg:grid lg:grid-cols-2 lg:gap-10">
+                            <div class="lg:pr-6">
+                                <div class="flex items-start gap-3 mb-6">
+                                    <div class="text-blue-600 flex-shrink-0 mt-1">${getIcon('Sparkles', 24)}</div>
+                                    <div class="flex-1">
+                                <h2 id="idea-modal-title" class="text-2xl font-bold text-slate-800 mb-4">
+                                    ${state.selectedIdea.fragments.map(f => f.text).join(' ')}
+                                </h2>
+                                ${isAdmin() ? `
+                                    <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                                        <p class="text-amber-800"><strong>Admin Stats:</strong> ${state.selectedIdea.views} views • Created ${new Date(state.selectedIdea.timestamp).toLocaleString()}</p>
+                                    </div>
+                                ` : ''}
+                                <div class="flex flex-wrap gap-2 mb-2">
+                                    ${state.selectedIdea.fragments.map((frag, idx) => `
+                                        <div class=\"flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1\">
+                                            <div class=\"w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold\">${frag.userName[0]}</div>
+                                            <span class=\"text-sm text-slate-700\">${frag.userName}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                <div class="text-xs text-slate-500 mb-4">
+                                    Completed ${new Date(state.selectedIdea.timestamp).toLocaleString()} <span>•</span> ${state.selectedIdea.views} views
+                                </div>
+                                <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4">
+                                    <div class="text-xs text-slate-600 mb-2 font-semibold">Spark timeline</div>
+                                    <ol class="space-y-2">
+                                        ${state.selectedIdea.fragments.map((frag, idx) => `
+                                            <li class=\"text-sm text-slate-700\">
+                                                <span class=\"font-semibold\">${idx+1}.</span> ${frag.text}
+                                                <span class=\"text-xs text-slate-500 ml-2\">(${frag.createdAt ? new Date(frag.createdAt).toLocaleString() : 'time unknown'})</span>
+                                            </li>
+                                        `).join('')}
+                                    </ol>
+                                </div>
+                                <div class="flex items-center gap-2 mb-4">
+                                    <div class="text-xs text-slate-500">Contributors:</div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        ${[...new Set(state.selectedIdea.fragments.map(f => f.userId))].map(uid => {
+                                            const u = state.allUsers.find(x => x.id === uid) || { name: uid };
+                                            const initials = (u.name || String(uid))[0] || '?';
+                                            return `
+                                                <div class='flex items-center gap-2 bg-slate-50 rounded-full px-2 py-1'>
+                                                    <div class='w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold'>${initials.toUpperCase()}</div>
+                                                    <span class='text-xs text-slate-600'>${u.name || uid}</span>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                                <div class="flex gap-4 mb-6 flex-wrap">
+                                     <button onclick="handleLike(event);" class="flex items-center gap-2 px-4 py-2 rounded-lg transition ${state.selectedIdea.likedBy.includes(state.currentUser?.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                        ${getIcon('ThumbsUp', 18)}
+                                        <span class="font-semibold">${state.selectedIdea.likes}</span>
+                                    </button>
+                                     <button onclick="handleDislike(event);" class="flex items-center gap-2 px-4 py-2 rounded-lg transition ${state.selectedIdea.dislikedBy.includes(state.currentUser?.id) ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                        ${getIcon('ThumbsDown', 18)}
+                                        <span class="font-semibold">${state.selectedIdea.dislikes}</span>
+                                    </button>
+                                    ${isAdmin() ? `
+                                        <button onclick="handleDeleteIdea();" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition ml-auto">
+                                            Delete Idea
+                                        </button>
+                                    ` : ''}
+                                </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="lg:pl-6">
+                                <div class="border-t lg:border-t-0 lg:border-l pt-6 lg:pt-0 lg:pl-6 border-slate-200">
+                                    <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                        ${getIcon('MessageCircle', 20)}Comments
+                                    </h3>
+                                    <div id="comments-list" class="space-y-4 mb-4 max-h-[28rem] overflow-y-auto">
+                                        ${state.selectedIdea.commentList && state.selectedIdea.commentList.length ? state.selectedIdea.commentList.map((c, idx) => `
+                                            <div class='bg-slate-50 rounded-lg p-3 border border-slate-200'>
+                                                <div class='flex items-center gap-2 mb-1'>
+                                                    ${getUserById(c.userId)?.avatarUrl ? `
+                                                        <img alt='${c.userName}' src='${getUserById(c.userId).avatarUrl}' class='w-6 h-6 rounded-full object-cover' />
+                                                    ` : `
+                                                        <div class=\"w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold\">${(c.userName||'?')[0]}</div>
+                                                    `}
+                                                    <span class='font-semibold text-sm text-slate-800'>${c.userName}</span>
+                                                    <span class='text-xs text-slate-500 ml-auto'>${new Date(c.timestamp).toLocaleTimeString()}</span>
+                                                </div>
+                                                <p class='text-slate-700 text-sm'>${c.text}</p>
+                                                <div class='flex gap-3 mt-2 text-xs'>
+                                                    <button onclick="handleLikeComment(${idx}, event);" class='flex items-center gap-1 ${c.likedBy?.includes(state.currentUser?.id) ? 'text-emerald-700' : 'text-slate-600'}'>${getIcon('ThumbsUp',12)}<span>${c.likes||0}</span></button>
+                                                    <button onclick="handleDislikeComment(${idx}, event);" class='flex items-center gap-1 ${c.dislikedBy?.includes(state.currentUser?.id) ? 'text-red-700' : 'text-slate-600'}'>${getIcon('ThumbsDown',12)}<span>${c.dislikes||0}</span></button>
+                                                    ${isAdmin() ? `<button onclick=\"handleDeleteComment(${idx});\" class='ml-auto text-red-600 hover:text-red-700'>Delete</button>` : ''}
+                                                </div>
+                                            </div>
+                                        `).join('') : `<p class='text-slate-400 text-sm italic'>No comments yet. Be the first!</p>`}
+                                    </div>
+                <div class="flex gap-2">
+                                        <input type="text" id="comment-input" placeholder="Add a comment..." maxlength="300" class="flex-1 border-2 border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                        <button onclick="
+                                            const comment = document.getElementById('comment-input').value;
+                                            if (comment.trim()) {
+                                                const commentsList = document.getElementById('comments-list');
+                                                const newComment = \`
+                                                    <div class='bg-slate-50 rounded-lg p-3 border border-slate-200'>
+                                                        <div class='flex items-center gap-2 mb-1'>
+                                                            <div class='w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold'>\${state.currentUser.name[0]}</div>
+                                                            <span class='font-semibold text-sm text-slate-800'>\${state.currentUser.name}</span>
+                                                            <span class='text-xs text-slate-500 ml-auto'>\${new Date().toLocaleTimeString()}</span>
+                                                        </div>
+                                                        <p class='text-slate-700 text-sm'>\${escapeHtml(comment)}</p>
+                                                    </div>
+                                                \`;
+                                                if (commentsList.innerHTML.includes('No comments yet')) {
+                                                    commentsList.innerHTML = newComment;
+                                                } else {
+                                                    commentsList.innerHTML += newComment;
+                                                }
+                                                document.getElementById('comment-input').value = '';
+                                                const cObj = { userId: state.currentUser.id, userName: state.currentUser.name, text: escapeHtml(comment), timestamp: Date.now(), likes:0, dislikes:0, likedBy:[], dislikedBy:[] };
+                                                const updatedIdea = {...state.selectedIdea, comments: (state.selectedIdea.comments||0) + 1, commentList: [...(state.selectedIdea.commentList||[]), cObj]};
+                                                state.ideas = state.ideas.map(i => i.id === state.selectedIdea.id ? updatedIdea : i);
+                                                state.selectedIdea = updatedIdea;
+                                                updateIdeaInFirebase(updatedIdea);
+                                                announce('Comment posted');
+                                            }
+                                        " class="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">Post</button>
+                                    </div>
+                                    <p id="comment-char-count" class="text-xs text-slate-500 mt-1">0/300</p>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="state.selectedIdea = null; render();" class="w-full px-6 py-3 border-2 border-slate-300 rounded-lg font-semibold hover:bg-slate-50 transition">Close</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAnalyticsDashboard() {
+            const analytics = getAnalytics();
+            
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                ${getIcon('BarChart3', 28, 'text-blue-600')}
+                                Platform Analytics
+                            </h2>
+                            <p class="text-slate-600 mt-1">Real-time insights into ChainSpark activity</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Sparkles', 24)}
+                                <span class="text-blue-100 text-sm font-semibold">TOTAL</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalIdeas}</p>
+                            <p class="text-blue-100 text-sm">Completed Ideas</p>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Zap', 24)}
+                                <span class="text-emerald-100 text-sm font-semibold">ACTIVE</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalChains}</p>
+                            <p class="text-emerald-100 text-sm">In Progress</p>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Users', 24)}
+                                <span class="text-amber-100 text-sm font-semibold">COMMUNITY</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalUsers}</p>
+                            <p class="text-amber-100 text-sm">Total Users</p>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                ${getIcon('Activity', 24)}
+                                <span class="text-purple-100 text-sm font-semibold">ENGAGEMENT</span>
+                            </div>
+                            <p class="text-4xl font-bold mb-1">${analytics.totalEngagements}</p>
+                            <p class="text-purple-100 text-sm">Total Interactions</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white border-2 border-slate-200 rounded-xl p-6 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                ${getIcon('Target', 20, 'text-blue-600')}
+                                Key Metrics
+                            </h3>
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Total Fragments</span>
+                                    <span class="text-2xl font-bold text-slate-800">${analytics.totalFragments}</span>
+                                </div>
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Total Views</span>
+                                    <span class="text-2xl font-bold text-slate-800">${analytics.totalViews}</span>
+                                </div>
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Active Users (7d)</span>
+                                    <span class="text-2xl font-bold text-slate-800">${analytics.activeUsers}</span>
+                                </div>
+                            <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-slate-600">Completion Rate</span>
+                                    <span class="text-2xl font-bold text-emerald-600">${analytics.completionRate}%</span>
+                                </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-600">Avg Fragments / Idea</span>
+                                <span class="text-2xl font-bold text-slate-800">${analytics.avgFragmentsPerIdea}</span>
+                            </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white border-2 border-slate-200 rounded-xl p-6 shadow-sm">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                ${getIcon('TrendingUp', 20, 'text-emerald-600')}
+                                Top Performing Ideas
+                            </h3>
+                            ${state.ideas.length > 0 ? `
+                                <div class="space-y-3">
+                            ${state.ideas.sort((a, b) => (b.likes + b.views) - (a.likes + a.views)).slice(0, 3).map((idea, idx) => `
+                                        <div class=\"p-3 bg-slate-50 rounded-lg border border-slate-200 hover:border-blue-300 transition cursor-pointer\" onclick=\"openIdea(${idea.id});\">
+                                            <div class="flex items-start gap-2">
+                                                <span class="text-lg font-bold text-slate-400">#${idx + 1}</span>
+                                                <div class="flex-1">
+                                                    <p class="text-sm text-slate-800 line-clamp-2">${idea.fragments.map(f => f.text).join(' ')}</p>
+                                                    <div class="flex gap-3 mt-2 text-xs text-slate-600">
+                                                        <span class="flex items-center gap-1">
+                                                            ${getIcon('ThumbsUp', 12)}
+                                                            ${idea.likes}
+                                                        </span>
+                                                        <span class="flex items-center gap-1">
+                                                            ${getIcon('MessageCircle', 12)}
+                                                            ${idea.comments}
+                                                        </span>
+                                                        <span class="flex items-center gap-1">
+                                                            ${getIcon('Activity', 12)}
+                                                            ${idea.views} views
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `
+                                <div class="text-center py-8">
+                                    ${getIcon('TrendingUp', 40, 'mx-auto text-slate-300 mb-3')}
+                                    <p class="text-slate-500 text-sm">No ideas yet. Start creating!</p>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+
+                    <div class="bg-white border-2 border-slate-200 rounded-xl p-6 shadow-sm">
+                        <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            ${getIcon('Users', 20, 'text-blue-600')}
+                            User Management
+                        </h3>
+                        <div class="mb-4">
+                            <h4 class="text-sm font-semibold text-slate-700 mb-2">Top Contributors</h4>
+                            ${analytics.topContributors.length ? `
+                                <ul class='text-sm text-slate-700 space-y-1'>
+                                    ${analytics.topContributors.map((t, i) => {
+                                        const u = state.allUsers.find(x => x.id === t.uid) || { name: t.uid };
+                                        return `<li class='flex items-center gap-2'><span class='text-slate-400 w-5 text-right'>#${i+1}</span><span class='font-medium'>${u.name}</span><span class='ml-auto text-slate-500'>${t.count} fragments</span></li>`;
+                                    }).join('')}
+                                </ul>
+                            ` : `<p class='text-slate-500 text-sm'>No contributions yet.</p>`}
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-slate-200">
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">User</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Email</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Role</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Joined</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-slate-700">Contributions</th>
+                                        <th class="text-right py-3 px-4 text-sm font-semibold text-slate-700">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${state.allUsers.map(user => {
+                                        const userContributions = state.ideas.reduce((acc, idea) => acc + idea.fragments.filter(f => f.userId === user.id).length, 0);
+                                        return `
+                                            <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+                                                <td class="py-3 px-4">
+                                                    <div class="flex items-center gap-2">
+                                                        ${user.avatarUrl ? `<img alt="${user.name}" src="${user.avatarUrl}" class="w-8 h-8 rounded-full object-cover" />` : `<div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">${user.name[0]}</div>`}
+                                                        <span class="text-sm font-medium text-slate-800">${user.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3 px-4 text-sm text-slate-600">${user.email}</td>
+                                                <td class="py-3 px-4">
+                                                    ${user.role === 'admin' ? `
+                                                        <span class="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs px-2 py-1 rounded-full font-semibold">Admin</span>
+                                                    ` : `
+                                                        <span class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-full font-semibold">User</span>
+                                                    `}
+                                                </td>
+                                                <td class="py-3 px-4 text-sm text-slate-600">
+                                                    ${new Date(user.joinedAt).toLocaleDateString()}
+                                                </td>
+                                                <td class="py-3 px-4 text-sm font-semibold text-slate-800">${userContributions}</td>
+                                                <td class="py-3 px-4 text-right">
+                                                    ${isAdmin() && user.role !== 'admin' ? `
+                                                        <button onclick="(async ()=>{ if(confirm('Remove ${user.name}?')){ try { 
+                                                            if (useFirebase && db) { await db.collection('users').doc('${user.id}').delete(); } 
+                                                            else { const users = _readLocal('cs_users').filter(u=>u.id!=='${user.id}'); _writeLocal('cs_users', users); }
+                                                            state.allUsers = state.allUsers.filter(u=>u.id!=='${user.id}');
+                                                            render();
+                                                        } catch(e){ alert('Failed to remove user'); } } })()" class="text-red-600 hover:text-red-700 text-sm">Remove</button>
+                                                    ` : ''}
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderIdeaWall() {
+            const sortedIdeas = [...state.ideas].sort((a, b) => {
+                if (state.sortBy === 'newest') return b.timestamp - a.timestamp;
+                if (state.sortBy === 'top') return b.likes - a.likes;
+                if (state.sortBy === 'rising') return (b.likes + b.comments) - (a.likes + a.comments);
+                return 0;
+            });
+
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-2xl font-bold text-slate-800">Idea Wall</h2>
+                        <div class="flex gap-2">
+                            <button onclick="state.sortBy = 'newest'; render();" class="flex items-center gap-1 px-4 py-2 rounded-lg font-semibold transition ${state.sortBy === 'newest' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                ${getIcon('Clock', 16)}Newest
+                            </button>
+                            <button onclick="state.sortBy = 'rising'; render();" class="flex items-center gap-1 px-4 py-2 rounded-lg font-semibold transition ${state.sortBy === 'rising' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                ${getIcon('TrendingUp', 16)}Rising
+                            </button>
+                            <button onclick="state.sortBy = 'top'; render();" class="flex items-center gap-1 px-4 py-2 rounded-lg font-semibold transition ${state.sortBy === 'top' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                                ${getIcon('Flame', 16)}Top
+                            </button>
+                        </div>
+                    </div>
+                    ${sortedIdeas.length > 0 ? `
+                        <div class="grid gap-4">
+                            ${sortedIdeas.map(idea => `
+<div class=\"bg-white border-2 border-slate-200 rounded-xl p-6 cursor-pointer shadow-sm idea-card\" onclick=\"openIdea(${idea.id});\">                                    <div class=\"flex flex-wrap gap-2 mb-3\">
+                                        ${idea.fragments.map((frag, idx) => `
+                                            <div class="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
+                                            ${getUserById(frag.userId)?.avatarUrl ? `
+                                                <img alt="${frag.userName}" src="${getUserById(frag.userId).avatarUrl}" class="w-6 h-6 rounded-full object-cover" />
+                                            ` : `
+                                                <div class=\"w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold\">${frag.userName[0]}</div>
+                                            `}
+                                                <span class="text-sm text-slate-700">${frag.userName}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <p class=\"text-slate-800 mb-4 leading-relaxed line-clamp-2\">${idea.fragments.map(f=>f.text).join(' ')}</p>
+                                    <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                                        <span>Completed</span>
+                                        <span>•</span>
+                                        <span>${new Date(idea.timestamp).toLocaleString()}</span>
+                                    </div>
+                                    <div class="flex gap-4 items-center">
+                                         <button onclick="event.stopPropagation(); ${state.currentUser ? `handleToggleLikeOnCard(${idea.id}, event);` : `state.showAuth=true; render();`}" class="flex items-center gap-2 text-slate-600 hover:text-emerald-600 transition">
+                                            ${getIcon('ThumbsUp', 18)}
+                                            <span class="font-semibold">${idea.likes}</span>
+                                        </button>
+                                         <button onclick="event.stopPropagation(); ${state.currentUser ? `handleToggleDislikeOnCard(${idea.id}, event);` : `state.showAuth=true; render();`}" class="flex items-center gap-2 text-slate-600 hover:text-red-600 transition">
+                                            ${getIcon('ThumbsDown', 18)}
+                                            <span class="font-semibold">${idea.dislikes}</span>
+                                        </button>
+                                        <button class="flex items-center gap-2 text-slate-600 hover:text-blue-600 transition">
+                                            ${getIcon('MessageCircle', 18)}
+                                            <span class="font-semibold">${idea.comments}</span>
+                                        </button>
+                                        ${isAdmin() ? `
+                                            <button onclick=\"event.stopPropagation(); if(confirm('Delete this idea?')){ deleteIdeaFromFirebase(${idea.id}); state.ideas = state.ideas.filter(i=>i.id!==${idea.id}); render(); }\" class='ml-auto text-red-600 hover:text-red-700 text-sm'>Delete</button>
+                                            <span class=\"flex items-center gap-1 text-sm text-slate-500\">
+                                                ${getIcon('Activity', 14)}
+                                                ${idea.views} views
+                                            </span>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="text-center py-16 bg-white border-2 border-slate-200 rounded-xl shadow-sm">
+                            ${getIcon('Sparkles', 56, 'mx-auto text-slate-300 mb-4')}
+                            <h3 class="text-xl font-bold text-slate-800 mb-2">No Ideas Yet</h3>
+                            <p class="text-slate-500 mb-6">Be the first to create a spark and start a collaborative idea!</p>
+                            <button onclick="state.showSparkModal = true; render();" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                Start Your First Spark
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderContributionQueue() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-2xl font-bold text-slate-800">Contribution Queue</h2>
+                        <p class="text-slate-600">${state.incompleteChains.length} chains waiting</p>
+                    </div>
+                    ${state.incompleteChains.length > 0 ? `
+                        <div class="grid gap-4 md:grid-cols-2">
+    ${state.incompleteChains.map(chain => {
+        const canContribute = !chain.contributedBy.includes(state.currentUser?.id);
+        const pct = Math.round((chain.fragments.length / 5) * 100);
+        return `
+            <div class="bg-white border-2 border-slate-200 rounded-xl shadow-sm chain-card">
+                <div class="w-full h-1.5 queue-progress-bg rounded-t-xl overflow-hidden">
+                    <div class="h-full bg-emerald-500" style="width:${pct}%;"></div>
+                </div>
+                <div class="p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-slate-600 text-sm">Progress</span>
+                        <span class="text-xs px-2 py-1 rounded-full ${pct>=80?'bg-emerald-100 text-emerald-700':'bg-slate-100 text-slate-600'}">${pct}%</span>
+                    </div>
+                    <div class="space-y-2 mb-4">
+                        ${chain.fragments.map((frag, idx) => `
+                            <div class='flex gap-2 items-start text-sm'>
+                                <span class='text-slate-400 font-bold flex-shrink-0 text-xs'>${idx + 1}.</span>
+                                <div class='flex-1'>
+                                    <p class='text-slate-800 mb-1 leading-tight'>${frag.text}</p>
+                                    <div class='flex items-center gap-2'>
+                                        ${getUserById(frag.userId)?.avatarUrl ? `
+                                            <img alt='${frag.userName}' src='${getUserById(frag.userId).avatarUrl}' class='w-4 h-4 rounded-full object-cover' />
+                                        ` : `
+                                            <div class="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">${frag.userName[0].toUpperCase()}</div>
+                                        `}
+                                        <span class='text-xs text-slate-600 font-medium'>${frag.userName}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${[...Array(5 - chain.fragments.length)].map((_, idx) => `
+                            <div class="flex gap-2 text-sm">
+                                <span class="text-slate-300 font-bold text-xs">${chain.fragments.length + idx + 1}.</span>
+                                <p class="text-slate-300 italic text-sm">Waiting for contribution...</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="text-xs text-slate-500 mb-3">Started ${new Date(chain.timestamp).toLocaleDateString()}</div>
+                    ${isAdmin() ? `<div class="mb-3"><button onclick="(async()=>{ if(confirm('Delete this chain?')){ await deleteChainFromFirebase(${chain.id}); state.incompleteChains = state.incompleteChains.filter(c=>c.id!==${chain.id}); render(); } })()" class='text-red-600 hover:text-red-700 text-xs'>Delete chain</button></div>` : ''}
+                    <button
+                        onclick="${!state.currentUser ? 'state.showAuth = true; render();' : (canContribute ? `state.selectedChain = state.incompleteChains.find(c => c.id === ${chain.id}); state.showContributeModal = true; render();` : '')}"
+                        ${state.currentUser && !canContribute ? 'disabled' : ''}
+                        class="w-full px-4 py-2 rounded-lg font-semibold transition text-sm ${state.currentUser && !canContribute ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}"
+                    >
+                        ${state.currentUser && !canContribute ? 'Already Contributed' : 'Add Your Spark'}
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('')}
+  </div>
+                    ` : `
+                        <div class="text-center py-16 bg-white border-2 border-slate-200 rounded-xl shadow-sm">
+                            ${getIcon('Zap', 56, 'mx-auto text-slate-300 mb-4')}
+                            <h3 class="text-xl font-bold text-slate-800 mb-2">No Chains in Queue</h3>
+                            <p class="text-slate-500 mb-6">Start a new spark to begin a collaborative chain!</p>
+                            <button onclick="state.showSparkModal = true; render();" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm">
+                                Start a Spark
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderProfilePage() {
+            const userIdeas = state.ideas.filter(idea => idea.fragments.some(f => f.userId === state.currentUser?.id));
+            const userFragments = state.ideas.reduce((acc, idea) => acc + idea.fragments.filter(f => f.userId === state.currentUser?.id).length, 0);
+            const totalReactions = userIdeas.reduce((acc, idea) => acc + idea.likes - idea.dislikes, 0);
+
+            return `
+                <div class="space-y-6">
+                    <div class="bg-white border-2 border-slate-200 rounded-xl p-8 shadow-sm">
+                            <div class="flex items-start gap-6">
+                                <div class="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-slate-100 flex-shrink-0">
+                                    ${state.currentUser?.avatarUrl ? `<img src="${state.currentUser.avatarUrl}" alt="avatar" class="w-full h-full object-cover">` : `<div class="text-4xl font-bold text-blue-600">${state.currentUser?.name[0]}</div>`}
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <h2 class="text-3xl font-bold text-slate-800">${state.currentUser?.name}</h2>
+                                        ${isAdmin() ? `
+                                            <span class="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs px-3 py-1 rounded-full font-semibold flex items-center gap-1">
+                                                ${getIcon('Shield', 12)}
+                                                ADMIN
+                                            </span>
+                                        ` : ''}
+                                        <button onclick="state.showEditProfile = !state.showEditProfile; render();" class="ml-auto text-sm text-blue-600 px-3 py-1 rounded-lg border border-blue-100 hover:bg-blue-50">Edit Profile</button>
+                                    </div>
+                                    <p class="text-slate-600 mb-2">${state.currentUser?.email}</p>
+                                    <p class="text-slate-600 mb-4">${state.currentUser?.bio || '<em>No bio yet</em>'}</p>
+                                    ${state.showEditProfile ? `
+                                        <div class=\"space-y-3 mb-4\">
+                                            <input id=\"profile-name\" type=\"text\" class=\"w-full border border-slate-300 rounded-lg px-4 py-2\" value=\"${state.currentUser?.name || ''}\" placeholder=\"Name\" />
+                                            <div class=\"grid sm:grid-cols-2 gap-3\">
+                                                <div>
+                                                    <label class=\"block text-sm text-slate-600 mb-1\">Upload avatar</label>
+                                                    <input id=\"profile-avatar-file\" type=\"file\" accept=\"image/*\" class=\"w-full text-sm\" />
+                                                    <p class=\"text-xs text-slate-500 mt-1\">JPEG/PNG, resized to ~256px</p>
+                                                </div>
+                                                <div>
+                                                    <label class=\"block text-sm text-slate-600 mb-1\">Or paste image URL</label>
+                                                    <input id=\"profile-avatar\" type=\"text\" class=\"w-full border border-slate-300 rounded-lg px-4 py-2\" value=\"${state.currentUser?.avatarUrl || ''}\" placeholder=\"https://...\" />
+                                                </div>
+                                            </div>
+                                            <textarea id=\"profile-bio\" class=\"w-full border border-slate-300 rounded-lg px-4 py-2\" placeholder=\"Short bio\">${state.currentUser?.bio || ''}</textarea>
+                                            <div class=\"flex gap-2\">
+                                                <button onclick=\"(async ()=>{ const updated = { name: document.getElementById('profile-name').value.trim(), bio: document.getElementById('profile-bio').value.trim() }; const f = document.getElementById('profile-avatar-file'); const url = document.getElementById('profile-avatar').value.trim(); if (f && f.files && f.files[0]) { try { updated.avatarUrl = await resizeImageToDataUrl(f.files[0]); } catch(e) {} } else if (url) { updated.avatarUrl = url; } await handleSaveProfile(updated); })()\" class=\"px-4 py-2 bg-emerald-600 text-white rounded-lg\">Save</button>
+                                                <button onclick=\"state.showEditProfile=false; render();\" class=\"px-4 py-2 border rounded-lg\">Cancel</button>
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div class="bg-blue-50 rounded-lg p-4 text-center border border-blue-100">
+                                        <p class="text-3xl font-bold text-blue-600">${userFragments}</p>
+                                        <p class="text-sm text-slate-600 mt-1">Sparks Added</p>
+                                    </div>
+                                    <div class="bg-emerald-50 rounded-lg p-4 text-center border border-emerald-100">
+                                        <p class="text-3xl font-bold text-emerald-600">${userIdeas.length}</p>
+                                        <p class="text-sm text-slate-600 mt-1">Ideas Completed</p>
+                                    </div>
+                                    <div class="bg-amber-50 rounded-lg p-4 text-center border border-amber-100">
+                                        <p class="text-3xl font-bold text-amber-600">${totalReactions}</p>
+                                        <p class="text-sm text-slate-600 mt-1">Total Reactions</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Your Contributions</h3>
+                        ${userIdeas.length > 0 ? `
+                            <div class="grid gap-4">
+                                ${userIdeas.map(idea => `
+                                    <div class=\"bg-white border-2 border-slate-200 rounded-xl p-6 hover:border-blue-300 transition cursor-pointer shadow-sm\" onclick=\"openIdea(${idea.id});\">
+                                        <p class="text-lg text-slate-800 mb-4 leading-relaxed">
+                                            ${idea.fragments.map((f, idx) => `
+                                                <span class="${f.userId === state.currentUser?.id ? 'bg-amber-100 px-1 rounded' : ''}">
+                                                    ${f.text}${idx < idea.fragments.length - 1 ? ' ' : ''}
+                                                </span>
+                                            `).join('')}
+                                        </p>
+                                        <div class="flex gap-4">
+                                            <span class="flex items-center gap-2 text-slate-600">
+                                                ${getIcon('ThumbsUp', 18)}
+                                                <span class="font-semibold">${idea.likes}</span>
+                                            </span>
+                                            <span class="flex items-center gap-2 text-slate-600">
+                                                ${getIcon('MessageCircle', 18)}
+                                                <span class="font-semibold">${idea.comments}</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div class="text-center py-12 bg-white border-2 border-slate-200 rounded-xl shadow-sm">
+                                ${getIcon('User', 48, 'mx-auto text-slate-300 mb-4')}
+                                <p class="text-slate-500 mb-4">You haven't contributed to any completed ideas yet.</p>
+                                <button onclick="state.activeTab = 'queue'; render();" class="text-blue-600 hover:text-blue-700 font-semibold">
+                                    Browse Contribution Queue →
+                                </button>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLandingPage() {
+            return `
+                <div class="text-center py-16">
+                    <img alt="ChainSpark" src="Logo512-04.svg" class="w-auto mx-auto mb-6" style="height:5.2rem;" />
+                    <h2 class="text-4xl font-bold text-slate-800 mb-4">Welcome to ChainSpark</h2>
+                    <p class="text-xl text-slate-600 mb-8 max-w-2xl mx-auto">
+                        Co-create ideas collaboratively. Start with a spark, build chains with others, and watch ideas come to life.
+                    </p>
+                    <div class="bg-white rounded-2xl p-8 max-w-4xl mx-auto mb-8 border-2 border-slate-200 shadow-sm">
+                        <h3 class="text-2xl font-bold text-slate-800 mb-6">How it works</h3>
+                        <div class="grid md:grid-cols-3 gap-8">
+                            <div class="text-center">
+                                <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    ${getIcon('Sparkles', 36, 'text-blue-600')}
+                                </div>
+                                <h4 class="font-bold text-slate-800 mb-2 text-lg">1. Start a Spark</h4>
+                                <p class="text-slate-600">Begin an idea with a short 100-character fragment</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    ${getIcon('Plus', 36, 'text-emerald-600')}
+                                </div>
+                                <h4 class="font-bold text-slate-800 mb-2 text-lg">2. Contribute</h4>
+                                <p class="text-slate-600">Add your fragment to existing chains in the queue</p>
+                            </div>
+                            <div class="text-center">
+                                <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    ${getIcon('Flame', 36, 'text-amber-600')}
+                                </div>
+                                <h4 class="font-bold text-slate-800 mb-2 text-lg">3. See Ideas on the Wall</h4>
+                                <p class="text-slate-600">After 5 contributions, ideas are completed and shared</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="state.showAuth = true; render();" class="bg-blue-600 text-white px-10 py-4 rounded-lg text-lg font-bold hover:bg-blue-700 transition shadow-lg hover:shadow-xl">
+                        Get Started
+                    </button>
+                </div>
+            `;
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            
+            let content = '';
+            try {
+                content += renderHeader();
+                content += '<main id="main" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">';
+            
+            if (!state.currentUser) {
+                content += renderLandingPage();
+            } else {
+                // Tab navigation
+                content += `
+                    <div class="flex gap-4 mb-8 border-b border-slate-200 overflow-x-auto pb-0">
+                        <button onclick="event.preventDefault(); state.activeTab = 'wall'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap ${state.activeTab === 'wall' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+    Idea Wall
+</button>
+<button onclick="event.preventDefault(); state.activeTab = 'queue'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap ${state.activeTab === 'queue' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+                            Contribution Queue
+                            ${state.incompleteChains.length > 0 ? `
+                                <span class="ml-2 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full">
+                                    ${state.incompleteChains.length}
+                                </span>
+                            ` : ''}
+                        </button>
+                        ${isAdmin() ? `
+                            <button onclick="state.activeTab = 'analytics'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap flex items-center gap-2 ${state.activeTab === 'analytics' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+                                ${getIcon('BarChart3', 18)}
+                                Analytics
+                            </button>
+                        ` : ''}
+                        <button onclick="event.preventDefault(); state.activeTab = 'profile'; render();" class="px-6 py-3 font-semibold transition whitespace-nowrap ${state.activeTab === 'profile' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-600 hover:text-slate-900'}">
+    Profile
+</button>
+                    </div>
+                `;
+                
+                // Tab content
+                if (state.activeTab === 'wall') {
+                    content += renderIdeaWall();
+                } else if (state.activeTab === 'queue') {
+                    content += renderContributionQueue();
+                } else if (state.activeTab === 'analytics' && isAdmin()) {
+                    content += renderAnalyticsDashboard();
+                } else if (state.activeTab === 'profile') {
+                    content += renderProfilePage();
+                }
+            }
+            
+                content += '</main>';
+                
+                // Modals
+                content += renderAuthModal();
+                content += renderStartSparkModal();
+                content += renderContributeModal();
+                content += renderIdeaDetailModal();
+                
+                app.innerHTML = content;
+                // hide error overlay on successful render
+                const eo = document.getElementById('error-overlay');
+                if (eo) eo.style.display = 'none';
+            } catch (err) {
+                const eo = document.getElementById('error-overlay');
+                const em = document.getElementById('error-overlay-msg');
+                if (eo && em) {
+                    em.textContent = String(err && err.stack || err);
+                    eo.style.display = 'block';
+                } else {
+                    console.error(err);
+                }
+                return;
+            }
+            
+            // Add event listeners for character counters
+            setTimeout(() => {
+                const sparkText = document.getElementById('spark-text');
+                if (sparkText) {
+                    sparkText.addEventListener('input', (e) => {
+                        const count = document.getElementById('spark-char-count');
+                        if (count) {
+                            count.textContent = `${e.target.value.length}/100 characters`;
+                            count.className = e.target.value.length > 90 ? 'text-sm text-red-500' : 'text-sm text-slate-500';
+                        }
+                    });
+                }
+                
+                const contributeText = document.getElementById('contribute-text');
+                if (contributeText) {
+                    contributeText.addEventListener('input', (e) => {
+                        const count = document.getElementById('contribute-char-count');
+                        if (count) {
+                            count.textContent = `${e.target.value.length}/100 characters`;
+                            count.className = e.target.value.length > 90 ? 'text-sm text-red-500' : 'text-sm text-slate-500';
+                        }
+                    });
+                }
+                
+                const commentInput = document.getElementById('comment-input');
+                if (commentInput) {
+                    commentInput.addEventListener('input', (e) => {
+                        const count = document.getElementById('comment-char-count');
+                        if (count) {
+                            count.textContent = `${e.target.value.length}/300`;
+                        }
+                    });
+                }
+
+                // ESC to close any open modal
+                const hasOpenModal = state.showAuth || state.showSparkModal || state.showContributeModal || !!state.selectedIdea;
+                if (hasOpenModal) {
+                    const onKey = (ev) => {
+                        if (ev.key === 'Escape') {
+                            state.showAuth = false;
+                            state.showSparkModal = false;
+                            state.showContributeModal = false;
+                            if (state.selectedIdea) state.selectedIdea = null;
+                            render();
+                        }
+                    };
+                    document.addEventListener('keydown', onKey, { once: true });
+
+                    // Basic focus trap within the first visible modal
+                    const modal = document.querySelector('.modal-content');
+                    if (modal) {
+                        const focusables = modal.querySelectorAll('a, button, textarea, input, select, [tabindex]:not([tabindex="-1"])');
+                        const first = focusables[0];
+                        const last = focusables[focusables.length - 1];
+                        if (first && typeof first.focus === 'function') first.focus();
+                        const trap = (e) => {
+                            if (e.key !== 'Tab' || focusables.length === 0) return;
+                            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+                            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+                        };
+                        modal.addEventListener('keydown', trap);
+                    }
+                }
+            }, 0);
+        }
+
+        // ===================================
+        // INITIALIZATION
+        // ===================================
+        
+        // Load data on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            // Restore session: if we have a saved current user id, fetch it
+            try {
+                const savedId = localStorage.getItem('cs_currentUserId');
+                if (savedId) {
+                    if (useFirebase && db) {
+                        const snap = await db.collection('users').doc(savedId).get();
+                        if (snap.exists) state.currentUser = { id: savedId, ...snap.data() };
+                    } else {
+                        const users = _readLocal('cs_users');
+                        const u = users.find(x => x.id === savedId);
+                        if (u) state.currentUser = u;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            await loadDataFromFirebase();
+            // Seed initial data if empty
+            if ((state.ideas?.length||0) === 0) {
+                try {
+                    const users = [
+                        { id: 'u-alex', name: 'Alex', email: 'alex@example.com', role: 'user', joinedAt: Date.now()-86400000*10, bio: '', avatarUrl: '' },
+                        { id: 'u-bella', name: 'Bella', email: 'bella@example.com', role: 'user', joinedAt: Date.now()-86400000*9, bio: '', avatarUrl: '' },
+                        { id: 'u-chen', name: 'Chen', email: 'chen@example.com', role: 'user', joinedAt: Date.now()-86400000*8, bio: '', avatarUrl: '' },
+                        { id: 'u-dina', name: 'Dina', email: 'dina@example.com', role: 'user', joinedAt: Date.now()-86400000*7, bio: '', avatarUrl: '' },
+                        { id: 'u-eli', name: 'Eli', email: 'eli@example.com', role: 'user', joinedAt: Date.now()-86400000*6, bio: '', avatarUrl: '' }
+                    ];
+                    // ensure users exist
+                    for (const u of users) { await saveUserToFirebase(u); }
+                    const now = Date.now();
+                    const ideas = [
+                        { // funny
+                            id: now-3,
+                            fragments: [
+                                { text: 'What if toasters had Wi‑Fi so they could', userId: 'u-alex', userName: 'Alex', createdAt: now-380000 },
+                                { text: 'DM bread about ideal crisp levels', userId: 'u-bella', userName: 'Bella', createdAt: now-360000 },
+                                { text: 'and post toast selfies to the cloud', userId: 'u-chen', userName: 'Chen', createdAt: now-340000 },
+                                { text: 'while negotiating with jam APIs', userId: 'u-dina', userName: 'Dina', createdAt: now-320000 },
+                                { text: 'to auto‑pair flavor profiles each morning', userId: 'u-eli', userName: 'Eli', createdAt: now-300000 }
+                            ],
+                            likes: 11, dislikes: 1, comments: 3, commentList: [
+                                { userId:'u-bella', userName:'Bella', text:'ToasterTok is inevitable.', timestamp: now-200000 },
+                                { userId:'u-alex', userName:'Alex', text:'Edge‑to‑edge crunch support please.', timestamp: now-150000 },
+                                { userId:'u-chen', userName:'Chen', text:'Don’t forget gluten‑free mode.', timestamp: now-120000 },
+                            ],
+                            timestamp: now-300000, likedBy: [], dislikedBy: [], views: 37
+                        },
+                        { // good
+                            id: now-2,
+                            fragments: [
+                                { text: 'A neighborhood micro‑grid that lets households', userId: 'u-chen', userName: 'Chen', createdAt: now-290000 },
+                                { text: 'trade surplus solar power in real time', userId: 'u-dina', userName: 'Dina', createdAt: now-280000 },
+                                { text: 'with transparent pricing and caps', userId: 'u-eli', userName: 'Eli', createdAt: now-270000 },
+                                { text: 'to protect low‑income residents', userId: 'u-alex', userName: 'Alex', createdAt: now-260000 },
+                                { text: 'and automatic storage for outages', userId: 'u-bella', userName: 'Bella', createdAt: now-250000 }
+                            ],
+                            likes: 23, dislikes: 0, comments: 2, commentList: [
+                                { userId:'u-dina', userName:'Dina', text:'We can pilot on 10 homes.', timestamp: now-180000 },
+                                { userId:'u-eli', userName:'Eli', text:'Local utility API is the blocker.', timestamp: now-160000 },
+                            ],
+                            timestamp: now-250000, likedBy: [], dislikedBy: [], views: 52
+                        },
+                        { // general
+                            id: now-1,
+                            fragments: [
+                                { text: 'An app that turns unused meeting rooms into', userId: 'u-bella', userName: 'Bella', createdAt: now-240000 },
+                                { text: 'quiet public study spaces after hours', userId: 'u-alex', userName: 'Alex', createdAt: now-235000 },
+                                { text: 'with noise scores and reservations', userId: 'u-chen', userName: 'Chen', createdAt: now-230000 },
+                                { text: 'and community moderation tools', userId: 'u-dina', userName: 'Dina', createdAt: now-225000 },
+                                { text: 'plus access codes that rotate nightly', userId: 'u-eli', userName: 'Eli', createdAt: now-220000 }
+                            ],
+                            likes: 9, dislikes: 2, comments: 1, commentList: [
+                                { userId:'u-alex', userName:'Alex', text:'Liability policy needed.', timestamp: now-140000 },
+                            ],
+                            timestamp: now-220000, likedBy: [], dislikedBy: [], views: 28
+                        },
+                        { // creative tech
+                            id: now-4,
+                            fragments: [
+                                { text: 'A shared AR mural that updates as', userId: 'u-eli', userName: 'Eli', createdAt: now-500000 },
+                                { text: 'neighbors add their drawings', userId: 'u-dina', userName: 'Dina', createdAt: now-490000 },
+                                { text: 'with moderation by voting', userId: 'u-chen', userName: 'Chen', createdAt: now-480000 },
+                                { text: 'and weekly time‑lapse recaps', userId: 'u-bella', userName: 'Bella', createdAt: now-470000 },
+                                { text: 'projected on a community wall', userId: 'u-alex', userName: 'Alex', createdAt: now-460000 }
+                            ],
+                            likes: 14, dislikes: 1, comments: 2, commentList: [
+                                { userId:'u-eli', userName:'Eli', text:'Kids would love this.', timestamp: now-420000 },
+                                { userId:'u-dina', userName:'Dina', text:'Let’s add a “calm hours” mode.', timestamp: now-410000 },
+                            ],
+                            timestamp: now-450000, likedBy: [], dislikedBy: [], views: 31
+                        },
+                        { // health
+                            id: now-5,
+                            fragments: [
+                                { text: 'An SMS check‑in bot that nudges', userId: 'u-alex', userName: 'Alex', createdAt: now-600000 },
+                                { text: 'people to take meds on time', userId: 'u-chen', userName: 'Chen', createdAt: now-590000 },
+                                { text: 'and alerts a buddy if two doses', userId: 'u-bella', userName: 'Bella', createdAt: now-580000 },
+                                { text: 'are missed back‑to‑back', userId: 'u-eli', userName: 'Eli', createdAt: now-570000 },
+                                { text: 'with privacy‑first design', userId: 'u-dina', userName: 'Dina', createdAt: now-560000 }
+                            ],
+                            likes: 17, dislikes: 0, comments: 2, commentList: [
+                                { userId:'u-chen', userName:'Chen', text:'HIPAA concerns but feasible.', timestamp: now-555000 },
+                                { userId:'u-bella', userName:'Bella', text:'Buddy consent UI is key.', timestamp: now-552000 },
+                            ],
+                            timestamp: now-550000, likedBy: [], dislikedBy: [], views: 44
+                        },
+                        { // climate
+                            id: now-6,
+                            fragments: [
+                                { text: 'City trees with QR tags to', userId: 'u-dina', userName: 'Dina', createdAt: now-700000 },
+                                { text: 'adopt for watering duty', userId: 'u-alex', userName: 'Alex', createdAt: now-690000 },
+                                { text: 'and earn local credits', userId: 'u-eli', userName: 'Eli', createdAt: now-680000 },
+                                { text: 'redeemable at small shops', userId: 'u-chen', userName: 'Chen', createdAt: now-670000 },
+                                { text: 'tracked on an open dashboard', userId: 'u-bella', userName: 'Bella', createdAt: now-660000 }
+                            ],
+                            likes: 12, dislikes: 1, comments: 1, commentList: [
+                                { userId:'u-dina', userName:'Dina', text:'We can test on 50 trees.', timestamp: now-655000 },
+                            ],
+                            timestamp: now-650000, likedBy: [], dislikedBy: [], views: 33
+                        }
+                    ];
+                    for (const idea of ideas) { await saveIdeaToFirebase(idea); }
+                    await loadDataFromFirebase();
+                } catch (e) { /* ignore seed errors */ }
+            }
+        }
+    );
+
+        // Initial render
+        // Ensure localStorage keys exist for local mode
+        if (!useFirebase) {
+            if (!localStorage.getItem('cs_ideas')) _writeLocal('cs_ideas', []);
+            if (!localStorage.getItem('cs_incompleteChains')) _writeLocal('cs_incompleteChains', []);
+            if (!localStorage.getItem('cs_users')) _writeLocal('cs_users', []);
+            if (!localStorage.getItem('cs_notifications')) _writeLocal('cs_notifications', []);
+        }
+
+        render();
+    </script>
+</body>
+</html>
